@@ -117,13 +117,44 @@ function main() {
   });
 
   // --- 8. bleed=true but no BleedBox ---
-  runCase('8. bleed=true but no BleedBox', () => {
+  // CHECKPOINT 5C (2026-10-05): updated. Previously this gave up on bleed
+  // geometry entirely (NO_BLEED_BOX_ANCHOR, bleedBoxPt=null,
+  // geometryStatus='unavailable'). Now it falls back to the SAME
+  // anchorless construction pattern already used for safeZoneBBoxPt:
+  // offset lib/zones.js's own, already-computed bleedBoxPt (vertical
+  // always known) into the real trimBoxPt frame. Without readingDirection,
+  // its horizontal axis stays null -- bleedBoxPt is "present but
+  // horizontally unresolved", not absent. geometryStatus becomes
+  // 'partial' (genuine vertical bleed geometry exists now), not
+  // 'unavailable'.
+  runCase('8. bleed=true but no BleedBox falls back to anchorless vertical-only bleed', () => {
     const sz = buildZones({ pageCount: PAGE_COUNT_100 }, { trimSize: TRIM_6x9, bleed: true });
     const geo = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)) }); // no bleedBox
-    assert.ok(hasCode(geo.diagnostics, 'NO_BLEED_BOX_ANCHOR'));
-    assert.equal(geo.bleedBoxPt, null);
-    assert.equal(geo.geometryStatus, 'unavailable');
-    assert.equal(geo.complianceConfidence, 'insufficient');
+    assert.ok(hasCode(geo.diagnostics, 'BLEED_BOX_ANCHORLESS_FROM_SEMANTIC_ZONES'));
+    assert.ok(!hasCode(geo.diagnostics, 'NO_BLEED_BOX_ANCHOR'));
+    assert.notEqual(geo.bleedBoxPt, null, 'bleedBoxPt is now present (vertical-only) rather than absent entirely');
+    assert.equal(geo.bleedBoxPt.minX, null, 'horizontal axis still null without readingDirection');
+    assert.equal(geo.bleedBoxPt.maxX, null);
+    assert.equal(geo.bleedBoxPt.minY, 0 - inToPt(0.125));
+    assert.equal(geo.bleedBoxPt.maxY, inToPt(9) + inToPt(0.125));
+    assert.equal(geo.geometryStatus, 'partial', 'genuine (vertical-only) bleed geometry is not the same as unavailable');
+    assert.equal(geo.complianceConfidence, 'high', 'no conflict and nothing missing that a conflict/insufficient label would apply to');
+  });
+
+  // --- 8b. CHECKPOINT 5C safety regression: a present-but-horizontally-
+  // null bleedBoxPt must still correctly BLOCK left/right in
+  // lib/orchestrator.js's resolveAllowedSides() -- the exact gap this
+  // fallback is designed to close (a bare `bleedBoxPt === null` would
+  // vacuously PASS that gate instead).
+  runCase('8b. anchorless vertical-only bleedBoxPt still blocks left/right via resolveAllowedSides', () => {
+    const { resolveAllowedSides } = require('../lib/orchestrator');
+    const sz = buildZones({ pageCount: PAGE_COUNT_100 }, { trimSize: TRIM_6x9, bleed: true });
+    const geo = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)) });
+    const allowed = resolveAllowedSides(geo);
+    assert.equal(allowed.left, false, 'left must stay blocked -- bleed=true horizontal bleed is still unresolved');
+    assert.equal(allowed.right, false, 'right must stay blocked for the same reason');
+    assert.equal(allowed.top, true, 'top is unaffected (vertical bleed/margins are fully resolved)');
+    assert.equal(allowed.bottom, true);
   });
 
   // --- 9. MediaBox only ---
@@ -176,19 +207,30 @@ function main() {
     assert.equal(geo.safeZoneBBoxPt.maxY, 52 + inToPt(9) - inToPt(0.25));
   });
 
-  // --- 14. safe-zone horizontal unresolved ---
-  runCase('14. safe-zone horizontal unresolved', () => {
+  // --- 14. safe-zone horizontal: conservative resolution (not null) ---
+  // CHECKPOINT 5C (2026-10-05): updated. Margin/LEM safe-zone horizontal
+  // resolution is now INDEPENDENT of bleed -- both cases get the
+  // conservative, orientation-independent zone (CHECKPOINT 5A), since
+  // insidePt/outsidePt are known in both. Bleed's OWN horizontal axis is
+  // a separate matter (see case 8/8b/31-33 in zones-builder.test.js) and
+  // is NOT what this case is about.
+  runCase('14. safe-zone horizontal resolves conservatively regardless of bleed', () => {
     const noBleed = buildZoneGeometry(buildZones({ pageCount: PAGE_COUNT_100 }, { trimSize: TRIM_6x9, bleed: false }), { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)) });
     const withBleed = buildZoneGeometry(buildZones({ pageCount: PAGE_COUNT_100 }, { trimSize: TRIM_6x9, bleed: true }), {
       trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)),
       bleedBox: pdfBox(-9, -9, 500, 666),
     });
-    assert.equal(noBleed.safeZoneBBoxPt.minX, null);
-    assert.equal(noBleed.safeZoneBBoxPt.maxX, null);
-    assert.equal(withBleed.safeZoneBBoxPt.minX, null);
-    assert.equal(withBleed.safeZoneBBoxPt.maxX, null);
-    assert.ok(hasCode(noBleed.diagnostics, 'SAFE_ZONE_HORIZONTAL_EDGE_UNRESOLVED_WITHOUT_PAGE_PARITY'));
-    assert.ok(hasCode(withBleed.diagnostics, 'SAFE_ZONE_HORIZONTAL_EDGE_UNRESOLVED_WITHOUT_PAGE_PARITY'));
+    const conservativeMarginPt = inToPt(0.375); // max(insidePt=0.375in, outsidePt=0.25in) for pageCount=100
+    assert.equal(noBleed.safeZoneBBoxPt.minX, conservativeMarginPt);
+    assert.equal(noBleed.safeZoneBBoxPt.maxX, inToPt(6) - conservativeMarginPt);
+    assert.equal(withBleed.safeZoneBBoxPt.minX, conservativeMarginPt);
+    assert.equal(withBleed.safeZoneBBoxPt.maxX, inToPt(6) - conservativeMarginPt);
+    assert.ok(hasCode(noBleed.diagnostics, 'SAFE_ZONE_HORIZONTAL_CONSERVATIVE_ORIENTATION_INDEPENDENT'));
+    assert.ok(hasCode(withBleed.diagnostics, 'SAFE_ZONE_HORIZONTAL_CONSERVATIVE_ORIENTATION_INDEPENDENT'));
+    assert.deepEqual(noBleed.orientationHypotheses, {
+      ltr: { minX: inToPt(0.375), maxX: inToPt(6) - inToPt(0.25) },
+      rtl: { minX: inToPt(0.25), maxX: inToPt(6) - inToPt(0.375) },
+    });
   });
 
   // --- 15. partial geometry status ---
@@ -225,6 +267,48 @@ function main() {
     // same geometry regardless of rotationDeg -- confirms diagnostic-only, no transform
     assert.deepEqual(rotated.trimBoxPt, unrotated.trimBoxPt);
     assert.deepEqual(rotated.safeZoneBBoxPt, unrotated.safeZoneBBoxPt);
+  });
+
+  // --- 19-21. CHECKPOINT 5C: exact orientation -> geometryStatus 'complete' ---
+
+  // 19. exact orientation, bleed=false, everything else resolved -> 'complete'
+  runCase('19. exact orientation + no bleed -> geometryStatus complete', () => {
+    const sz = buildZones(
+      { pageCount: PAGE_COUNT_100, pageNumber: 5 },
+      { trimSize: TRIM_6x9, bleed: false, readingDirection: 'ltr' }
+    );
+    const geo = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)) });
+    assert.equal(geo.horizontalResolution, 'exact');
+    assert.equal(geo.safeZoneBBoxPt.minX, inToPt(0.375));
+    assert.equal(geo.safeZoneBBoxPt.maxX, inToPt(6) - inToPt(0.25));
+    assert.equal(geo.geometryStatus, 'complete', "'complete' is reachable now, specifically under exact orientation resolution");
+    assert.equal(geo.orientationHypotheses, null, 'exact mode carries no hypotheses -- there is nothing ambiguous left to resolve');
+  });
+
+  // 20. exact orientation + bleed=true, bleed anchorless (no real
+  // /BleedBox) -> bleed resolves exactly too via the semantic fallback ->
+  // still 'complete'.
+  runCase('20. exact orientation + bleed=true (anchorless) -> geometryStatus complete', () => {
+    const sz = buildZones(
+      { pageCount: PAGE_COUNT_100, pageNumber: 6 },
+      { trimSize: TRIM_6x9, bleed: true, readingDirection: 'ltr' }
+    );
+    const geo = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)) }); // no explicit BleedBox
+    assert.equal(geo.horizontalResolution, 'exact');
+    assert.notEqual(geo.bleedBoxPt.minX, null);
+    assert.notEqual(geo.bleedBoxPt.maxX, null);
+    assert.equal(geo.geometryStatus, 'complete');
+  });
+
+  // 21. conservative mode (no readingDirection) must NEVER reach
+  // 'complete', even with everything else perfectly resolved -- the
+  // explicit distinction CHECKPOINT 5A/5B insisted on (conservative is
+  // proven safe for READY, but is not the same claim as "fully resolved").
+  runCase('21. conservative mode never reaches geometryStatus complete', () => {
+    const sz = buildZones({ pageCount: PAGE_COUNT_100 }, { trimSize: TRIM_6x9, bleed: false });
+    const geo = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)) });
+    assert.equal(geo.horizontalResolution, 'conservative');
+    assert.equal(geo.geometryStatus, 'partial');
   });
 
   console.log(`\nAll ${caseCount} zoneGeometry test cases passed.`);

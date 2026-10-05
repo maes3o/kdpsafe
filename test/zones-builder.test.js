@@ -14,7 +14,7 @@
  */
 
 const assert = require('node:assert/strict');
-const { buildZones, inToPt } = require('../lib/zones');
+const { buildZones, inToPt, BLEED_INSIDE_IN } = require('../lib/zones');
 
 function pdfBox(x, y, widthPt, heightPt) {
   return { x, y, width: widthPt, height: heightPt };
@@ -29,15 +29,28 @@ function runCase(label, fn) {
 
 function main() {
   // --- 1. 6x9 no bleed ---
+  // CHECKPOINT 5C (2026-10-05): updated for Option D. Without
+  // userIntent.readingDirection, safeZoneBBoxPt's horizontal axis is no
+  // longer left `null` -- it resolves to the CONSERVATIVE,
+  // orientation-independent intersection(LTR,RTL) zone, proven safe in
+  // CHECKPOINT 5A. insidePt(27pt) >= outsidePt(18pt) here, so
+  // max(insidePt,outsidePt)=insidePt=27pt on both sides.
   runCase('1. 6x9 no bleed', () => {
     const result = buildZones({ pageCount: 100 }, { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false });
     assert.deepEqual(result.trimBoxPt, { minX: 0, minY: 0, maxX: inToPt(6), maxY: inToPt(9) });
     assert.equal(result.bleedBoxPt, null, 'no-bleed intent must produce bleedBoxPt=null');
     assert.deepEqual(result.marginsPt, { topPt: inToPt(0.25), bottomPt: inToPt(0.25), outsidePt: inToPt(0.25), insidePt: inToPt(0.375) });
-    assert.equal(result.safeZoneBBoxPt.minX, null);
-    assert.equal(result.safeZoneBBoxPt.maxX, null);
+    assert.equal(result.horizontalResolution, 'conservative');
+    const conservativeMarginPt = inToPt(0.375); // max(insidePt=0.375in, outsidePt=0.25in)
+    assert.equal(result.safeZoneBBoxPt.minX, conservativeMarginPt);
+    assert.equal(result.safeZoneBBoxPt.maxX, inToPt(6) - conservativeMarginPt);
     assert.equal(result.safeZoneBBoxPt.minY, inToPt(0.25));
     assert.equal(result.safeZoneBBoxPt.maxY, inToPt(9) - inToPt(0.25));
+    assert.deepEqual(result.orientationHypotheses, {
+      ltr: { minX: inToPt(0.375), maxX: inToPt(6) - inToPt(0.25) },
+      rtl: { minX: inToPt(0.25), maxX: inToPt(6) - inToPt(0.375) },
+    });
+    assert.equal(result.insideIsLeft, null, 'conservative mode never resolves a single physical side');
     assert.equal(result.confidence, 'high');
   });
 
@@ -229,6 +242,95 @@ function main() {
     assert.deepEqual(rotated.trimBoxPt, unrotated.trimBoxPt);
     assert.deepEqual(rotated.safeZoneBBoxPt, unrotated.safeZoneBBoxPt);
     assert.equal(rotated.confidence, 'high', 'rotation alone must never degrade confidence');
+  });
+
+  // --- 27-30. CHECKPOINT 5C: exact orientation resolution via
+  // userIntent.readingDirection + pageContext.pageNumber ---
+
+  // 27. LTR, odd page -> inside=left
+  runCase('27. LTR odd page -> inside=left', () => {
+    const result = buildZones(
+      { pageCount: 100, pageNumber: 5 },
+      { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false, readingDirection: 'ltr' }
+    );
+    assert.equal(result.horizontalResolution, 'exact');
+    assert.equal(result.insideIsLeft, true);
+    assert.equal(result.orientationHypotheses, null, 'exact mode does not need hypothesis boxes');
+    assert.equal(result.safeZoneBBoxPt.minX, inToPt(0.375)); // insidePt on the left
+    assert.equal(result.safeZoneBBoxPt.maxX, inToPt(6) - inToPt(0.25)); // outsidePt on the right
+    assert.ok(result.diagnostics.some((d) => d.code === 'SAFE_ZONE_HORIZONTAL_RESOLVED_EXACT_ORIENTATION'));
+  });
+
+  // 28. LTR, even page -> inside=right
+  runCase('28. LTR even page -> inside=right', () => {
+    const result = buildZones(
+      { pageCount: 100, pageNumber: 6 },
+      { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false, readingDirection: 'ltr' }
+    );
+    assert.equal(result.insideIsLeft, false);
+    assert.equal(result.safeZoneBBoxPt.minX, inToPt(0.25)); // outsidePt on the left
+    assert.equal(result.safeZoneBBoxPt.maxX, inToPt(6) - inToPt(0.375)); // insidePt on the right
+  });
+
+  // 29. RTL, odd page -> inverted (inside=right)
+  runCase('29. RTL odd page -> inside=right', () => {
+    const result = buildZones(
+      { pageCount: 100, pageNumber: 5 },
+      { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false, readingDirection: 'rtl' }
+    );
+    assert.equal(result.insideIsLeft, false);
+    assert.equal(result.safeZoneBBoxPt.minX, inToPt(0.25));
+    assert.equal(result.safeZoneBBoxPt.maxX, inToPt(6) - inToPt(0.375));
+  });
+
+  // 30. RTL, even page -> inverted (inside=left)
+  runCase('30. RTL even page -> inside=left', () => {
+    const result = buildZones(
+      { pageCount: 100, pageNumber: 6 },
+      { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false, readingDirection: 'rtl' }
+    );
+    assert.equal(result.insideIsLeft, true);
+    assert.equal(result.safeZoneBBoxPt.minX, inToPt(0.375));
+    assert.equal(result.safeZoneBBoxPt.maxX, inToPt(6) - inToPt(0.25));
+  });
+
+  // --- 31-33. CHECKPOINT 5C: bleed horizontal resolution ---
+
+  // 31. bleed=true, no readingDirection -> horizontal bleed stays unresolved
+  runCase('31. bleed=true without readingDirection stays horizontally unresolved', () => {
+    const result = buildZones({ pageCount: 100 }, { trimSize: { widthIn: 6, heightIn: 9 }, bleed: true });
+    assert.equal(result.bleedHorizontalResolution, 'unresolved');
+    assert.equal(result.bleedBoxPt.minX, null);
+    assert.equal(result.bleedBoxPt.maxX, null);
+    // Margin/LEM safe zone is UNAFFECTED by bleed being unresolved -- it
+    // still gets the conservative treatment, independently.
+    assert.equal(result.horizontalResolution, 'conservative');
+    assert.notEqual(result.safeZoneBBoxPt.minX, null);
+  });
+
+  // 32. bleed=true WITH readingDirection -> horizontal bleed fully resolved
+  runCase('32. bleed=true with readingDirection resolves horizontal bleed exactly', () => {
+    const result = buildZones(
+      { pageCount: 100, pageNumber: 5 },
+      { trimSize: { widthIn: 6, heightIn: 9 }, bleed: true, readingDirection: 'ltr' }
+    );
+    assert.equal(result.bleedHorizontalResolution, 'exact');
+    assert.equal(result.insideIsLeft, true);
+    assert.equal(result.bleedBoxPt.minX, 0 - inToPt(BLEED_INSIDE_IN)); // inside edge: 0 bleed
+    assert.equal(result.bleedBoxPt.maxX, inToPt(6) + inToPt(0.125)); // outside edge: BLEED_OUTER_IN
+    assert.ok(result.diagnostics.some((d) => d.code === 'BLEED_HORIZONTAL_RESOLVED_EXACT_ORIENTATION'));
+  });
+
+  // 33. conservative mode is NEVER applied to bleed, even when margins are
+  // known and bleed=true but readingDirection is absent -- re-stated
+  // explicitly as its own case per the explicit "DO NOT APPLY THIS TO
+  // BLEED" instruction.
+  runCase('33. conservative algorithm never reaches bleedBoxPt', () => {
+    const result = buildZones({ pageCount: 700 }, { trimSize: { widthIn: 8.5, heightIn: 11 }, bleed: true });
+    assert.equal(result.horizontalResolution, 'conservative');
+    assert.equal(result.bleedHorizontalResolution, 'unresolved');
+    assert.equal(result.bleedBoxPt.minX, null);
+    assert.equal(result.bleedBoxPt.maxX, null);
   });
 
   console.log(`\nAll ${caseCount} zones-builder test cases passed.`);
