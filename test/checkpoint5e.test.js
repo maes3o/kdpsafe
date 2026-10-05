@@ -411,6 +411,37 @@ async function main() {
     assert.deepEqual(result.reasons, []);
   });
 
+  // ===================================================================
+  // 14. CHECKPOINT 5F -- explicit contract decision (KEEP, not changed):
+  //     before.verdict === 'READY' and nothing applicable to autofix ->
+  //     verification === 'VERIFIED', after === null, no false reason.
+  //     A document that is already READY does not need a manufactured
+  //     second preflight just to populate `after` -- VERIFIED here means
+  //     "already verified, no mutation was necessary", a distinct but
+  //     equally valid way to reach VERIFIED alongside the "applied + re-
+  //     checked" path. See lib/orchestrator.js's verifyAutofix() for the
+  //     full rationale (CHECKPOINT 5F comment, same branch).
+  // ===================================================================
+  await runCase('14 (CHECKPOINT 5F contract). already-READY document, nothing to autofix -> VERIFIED with after=null, no false reason', async () => {
+    const bytes = await makeFixturePdf({
+      widthIn: 6,
+      heightIn: 9,
+      explicitTrimBox: [0, 0, 432, 648],
+      pages: [{ rects: [{ x: 200, y: 200, width: 20, height: 20 }] }], // comfortably inside the safe zone on every side
+    });
+    const opts = { userIntent: { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false }, pageContext: { pageCount: 100 } };
+    const result = await verifyAutofix(bytes, opts);
+
+    assert.equal(result.before.verdict, 'READY', 'precondition: the document is already READY before any autofix attempt');
+    assert.equal(result.before.autofixPlans.length, 0, 'precondition: nothing is even eligible for autofix');
+    assert.equal(result.applied.length, 0);
+    assert.equal(result.skipped.length, 0);
+    assert.equal(result.after, null, 'CHECKPOINT 5F (intentional): no second preflight is manufactured when nothing was applied');
+    assert.equal(result.verification, 'VERIFIED', 'CHECKPOINT 5F (intentional): already-READY + nothing-to-apply is itself a valid VERIFIED outcome');
+    assert.deepEqual(result.reasons, [], 'no false/spurious reason (e.g. NO_APPLICABLE_AUTOFIX) is produced when the document was already READY');
+    assert.deepEqual(result.outputBytes, bytes, 'output bytes are exactly the untouched original');
+  });
+
   console.log(`\nAll ${caseCount} checkpoint5e.test.js cases passed.`);
   console.log('(Requirement #14 -- "all existing tests remain green" -- is validated by running the full suite, not inside this file.)');
 }
