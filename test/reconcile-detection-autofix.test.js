@@ -63,6 +63,11 @@ const {
   buildImageCasesFixture,
 } = require('./make-safezone-fixtures');
 const { buildFormXObjectFixture } = require('./make-form-xobject-fixture');
+const {
+  buildEdgeTouchUntouchedLemFixture,
+  buildMultiSideLemWarningFixture,
+  buildMixedLemBleedFixture,
+} = require('./make-mismatch-fixtures');
 
 const autofixOpts = { pageBoxPt: trimBoxPt, bleedZoneBBoxPt: bleedBoxPt };
 
@@ -77,6 +82,13 @@ function summarizeDetection(violations) {
 
 const rows = [];
 const mismatches = [];
+// Deliberate, documented divergences between detection/aggregate and the
+// CURRENT planAutofix() -- found and reproduced by the 2026-10-05
+// validation checkpoint. These are NOT pushed into `mismatches` (which
+// gates the final "must reconcile cleanly" assertion below): they are a
+// real bug candidate, tracked here explicitly for review, not an
+// accepted/silent limitation. See Group A below.
+const knownMismatches = [];
 
 function addCase(label, obj) {
   const detection = classifyViolations(obj, zones);
@@ -208,6 +220,122 @@ async function run() {
     checkReconciliation('nested-form-xobject', obj, detection, autofix);
   }
 
+  // ===================================================================
+  // VALIDATION CHECKPOINT (2026-10-05) -- three new fixture groups,
+  // requested explicitly to fully characterize the detection/autofix
+  // divergence found while designing the integration boundary, BEFORE
+  // any integration code is written. autofix.js and margin.js are not
+  // touched by this checkpoint.
+  // ===================================================================
+
+  // --- GROUP A: edge-touch + untouched-side LEM (the known mismatch). ---
+  // Left side touches trim AND correctly reaches the bleed edge (safe on
+  // both layers). Top side has a genuine 14pt LEM overshoot (> 7.2pt,
+  // so 'error') and does NOT touch trim. Expected per the detection/
+  // policy model: 'manual_review'. ACTUAL current planAutofix(): 'safe'
+  // -- because touchedPageEdges() finds the touched left side, routes the
+  // WHOLE object through checkBleedCoverage(), which only checks gaps on
+  // TOUCHED sides, finds none, and returns 'safe' WITHOUT ever looking at
+  // the top side's LEM violation. Reproduced here exactly, not asserted
+  // away or softened.
+  {
+    const { bytes } = await buildEdgeTouchUntouchedLemFixture();
+    const results = await analyzePageObjects(bytes, 0);
+    const obj = results[0];
+    const detection = classifyViolations(obj, zones);
+    const autofix = runAutofix(obj);
+    rows.push({ label: 'MISMATCH-edge-touch-untouched-lem', type: obj.type, detection, autofix });
+    const aggregate = aggregateViolationsForAutofix(detection);
+
+    assert.equal(detection.length, 1, '[edge-touch-untouched-lem] expected exactly one violation (top side)');
+    assert.equal(detection[0].violation, 'LEM');
+    assert.equal(detection[0].side, 'top');
+    assert.equal(detection[0].severity, 'error');
+    assert.ok(Math.abs(detection[0].amountPt - 14) < 1e-6, `[edge-touch-untouched-lem] expected amountPt ~14, got ${detection[0].amountPt}`);
+    assert.equal(aggregate.recommendedAction, 'manual_review', '[edge-touch-untouched-lem] detection/policy model says manual_review');
+
+    // Reproduce the CURRENT (incorrect) planAutofix() behavior exactly.
+    // If this assertion ever starts failing on its own (e.g. because
+    // planAutofix() changes for an unrelated reason), that is a signal
+    // the mismatch may have shifted or been fixed -- re-verify by hand
+    // before updating it, don't just flip the expected value.
+    assert.equal(autofix.status, 'safe', '[edge-touch-untouched-lem] reproducing CURRENT planAutofix() behavior (the bug): status must be "safe"');
+    assert.ok(!autofix.shift, '[edge-touch-untouched-lem] current planAutofix() "safe" result carries no shift');
+
+    knownMismatches.push({
+      label: 'edge-touch-untouched-lem',
+      detection: summarizeDetection(detection),
+      aggregate: aggregate.recommendedAction,
+      currentAutofix: autofix.status,
+      desired: 'manual_review',
+      note: 'planAutofix() short-circuits to checkBleedCoverage() on ANY touched edge and never evaluates the untouched top side\'s LEM violation.',
+    });
+  }
+
+  // --- GROUP B: multi-side LEM, both sides 'warning' (<=7.2pt), neither
+  // side touching trim. Confirms exact per-side amounts and the resulting
+  // single 2D shift planAutofix() computes from them. ---
+  {
+    const { bytes } = await buildMultiSideLemWarningFixture();
+    const results = await analyzePageObjects(bytes, 0);
+    const obj = results[0];
+    const { detection, autofix } = addCase('multi-side-lem-warning', obj);
+    checkReconciliation('multi-side-lem-warning', obj, detection, autofix);
+
+    assert.equal(detection.length, 2, '[multi-side-lem-warning] expected exactly two violations');
+    const left = detection.find((v) => v.side === 'left');
+    const top = detection.find((v) => v.side === 'top');
+    assert.ok(left && top, '[multi-side-lem-warning] expected one left and one top violation');
+    assert.equal(left.severity, 'warning');
+    assert.equal(top.severity, 'warning');
+    assert.ok(Math.abs(left.amountPt - 5) < 1e-6, `[multi-side-lem-warning] left amountPt should be ~5, got ${left.amountPt}`);
+    assert.ok(Math.abs(top.amountPt - 3) < 1e-6, `[multi-side-lem-warning] top amountPt should be ~3, got ${top.amountPt}`);
+
+    const aggregate = aggregateViolationsForAutofix(detection);
+    assert.equal(aggregate.recommendedAction, 'candidate', '[multi-side-lem-warning] both sides warning -> candidate');
+
+    assert.equal(autofix.status, 'autofix', '[multi-side-lem-warning] expected autofix status "autofix"');
+    assert.ok(autofix.shift, '[multi-side-lem-warning] expected a shift');
+    assert.ok(Math.abs(autofix.shift.dx - 5) < 1e-6, `[multi-side-lem-warning] shift.dx should be ~5, got ${autofix.shift.dx}`);
+    assert.ok(Math.abs(autofix.shift.dy - -3) < 1e-6, `[multi-side-lem-warning] shift.dy should be ~-3, got ${autofix.shift.dy}`);
+  }
+
+  // --- GROUP C: mixed LEM + BLEED on different sides of the same
+  // object. Confirms aggregateViolationsForAutofix() reports both
+  // correctly (hasBleed AND the right maxAmountPt/sides across BOTH
+  // entries), and that this combination does NOT trigger Group A's
+  // mismatch (the touched side here genuinely has a bleed gap, so
+  // checkBleedCoverage() correctly returns manual_review on its own --
+  // unlike Group A, where the touched side was safe). ---
+  {
+    const { bytes } = await buildMixedLemBleedFixture();
+    const results = await analyzePageObjects(bytes, 0);
+    const obj = results[0];
+    const { detection, autofix } = addCase('mixed-lem-bleed', obj);
+    checkReconciliation('mixed-lem-bleed', obj, detection, autofix);
+
+    assert.equal(detection.length, 2, '[mixed-lem-bleed] expected exactly two violations');
+    const bleed = detection.find((v) => v.violation === 'BLEED');
+    const lem = detection.find((v) => v.violation === 'LEM');
+    assert.ok(bleed && lem, '[mixed-lem-bleed] expected one BLEED and one LEM violation');
+    assert.equal(bleed.side, 'left');
+    assert.equal(bleed.severity, 'error');
+    assert.ok(Math.abs(bleed.amountPt - 6) < 1e-6, `[mixed-lem-bleed] BLEED amountPt should be ~6, got ${bleed.amountPt}`);
+    assert.equal(lem.side, 'top');
+    assert.equal(lem.severity, 'warning');
+    assert.ok(Math.abs(lem.amountPt - 3) < 1e-6, `[mixed-lem-bleed] LEM amountPt should be ~3, got ${lem.amountPt}`);
+
+    const aggregate = aggregateViolationsForAutofix(detection);
+    assert.equal(aggregate.recommendedAction, 'manual_review', '[mixed-lem-bleed] any BLEED -> manual_review');
+    assert.equal(aggregate.hasBleed, true);
+    assert.equal(aggregate.hasText, false);
+    assert.ok(Math.abs(aggregate.maxAmountPt - 6) < 1e-6, '[mixed-lem-bleed] maxAmountPt should be the larger of the two (6)');
+    assert.deepEqual(aggregate.sides, ['left', 'top']);
+
+    assert.equal(autofix.status, 'manual_review', '[mixed-lem-bleed] expected autofix status "manual_review"');
+    assert.ok(!autofix.shift, '[mixed-lem-bleed] manual_review from a genuine bleed gap must carry no shift');
+  }
+
   // --- Print the reconciliation matrix (now including the explicit
   // aggregation-boundary column, lib/marginPolicy.js's
   // aggregateViolationsForAutofix -- shown for visibility only, still
@@ -256,13 +384,30 @@ async function run() {
     console.log(`\n[exactly-0.1in-overshoot-lem] now IDENTICAL across all three: detection=${boundaryRow.detection[0].severity}, autofix=${boundaryRow.autofix.status}, aggregate=${aggregate.recommendedAction}.`);
   }
 
-  // All cases must now reconcile cleanly -- ANY mismatch at this point is
-  // a genuine, unexpected disagreement worth investigating before
-  // integrating (the one known mismatch from the previous pass is gone).
+  // All cases EXCEPT the deliberately-reproduced Group A mismatch must
+  // reconcile cleanly -- ANY entry in `mismatches` here is a genuine,
+  // UNEXPECTED disagreement worth investigating before integrating. The
+  // one KNOWN mismatch (edge-touch + untouched-side LEM) is tracked
+  // separately in `knownMismatches`, asserted explicitly above, and
+  // reported in the decision table below -- not silently absorbed here.
   assert.deepEqual(mismatches, [], `unexpected detection/autofix disagreements:\n${mismatches.join('\n')}`);
 
-  console.log(`\nAll margin-violations <-> autofix reconciliation checks passed (${rows.length} cases; 0 mismatches -- the previous exactly-0.1in float-boundary mismatch is now resolved).`);
-  console.log('autofix.js behavior was NOT changed beyond the shared threshold comparison (exceedsAutofixThreshold from lib/marginPolicy.js, replacing a bare `> THRESHOLD_PT`).');
+  console.log(`\nAll margin-violations <-> autofix reconciliation checks passed (${rows.length} cases; 0 UNEXPECTED mismatches).`);
+  console.log('autofix.js and margin.js were NOT changed by this checkpoint -- aggregateViolationsForAutofix() is still not wired into either planAutofix() or classifyViolations().');
+
+  // --- Decision table (2026-10-05 validation checkpoint) ---
+  console.log('\n=== Decision table: current code vs. detection/policy model vs. desired KDPSafe behavior ===');
+  for (const m of knownMismatches) {
+    console.log(`\nCase: ${m.label}`);
+    console.log(`  Detection:       ${m.detection}`);
+    console.log(`  Aggregate:       ${m.aggregate}`);
+    console.log(`  Current Autofix: ${m.currentAutofix}`);
+    console.log(`  Desired result:  ${m.desired}`);
+    console.log(`  Note:            ${m.note}`);
+  }
+  if (knownMismatches.length === 0) {
+    console.log('(no known mismatches recorded)');
+  }
 }
 
 run().catch((err) => {
