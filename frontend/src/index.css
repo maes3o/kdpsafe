@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode (ThemeProvider toggles `.dark` on <html>), rather
+ * than Tailwind v4's default prefers-color-scheme-only variant. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens -- FRONTEND-01 scope: the minimal palette the shell
+ * actually uses. Intentionally restrained; full visual polish (Inter /
+ * JetBrains Mono webfonts, refined spacing scale, etc.) is deferred to a
+ * future checkpoint. Tailwind v4 CSS-first theme config. */
+@theme {
+  --font-sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  --color-ink: #16171d;
+  --color-ink-muted: #6b6375;
+  --color-bg: #ffffff;
+  --color-bg-panel: #fafafa;
+  --color-border: #e5e4e7;
+  --color-border-strong: #c7c5cc;
+
+  /* Status colors -- used only alongside an icon + text label, never alone
+   * (see components/StatusIcon.tsx). */
+  --color-status-ready: #15803d;
+  --color-status-attention: #b45309;
+  --color-status-review: #6d28d9;
+  --color-status-error: #b91c1c;
+}
+
+.dark {
+  --color-ink: #f3f4f6;
+  --color-ink-muted: #9ca3af;
+  --color-bg: #16171d;
+  --color-bg-panel: #1b1c23;
+  --color-border: #2e303a;
+  --color-border-strong: #3f414c;
+
+  --color-status-ready: #4ade80;
+  --color-status-attention: #fbbf24;
+  --color-status-review: #c4b5fd;
+  --color-status-error: #f87171;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
