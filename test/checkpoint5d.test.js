@@ -274,20 +274,17 @@ async function main() {
     assert.equal(afterAmbiguous.length, 1, 'C3: the LEFT ambiguity genuinely persists after the fix (dx=0 means its x-position is unchanged)');
     assert.equal(result.after.verdict, 'MANUAL_REVIEW_REQUIRED', 'C3: the document-level verdict correctly still reflects the surviving ambiguity');
 
-    // KNOWN, NOT-FIXED-IN-THIS-CHECKPOINT GAP (discovered while writing
-    // this exact test, explicitly left alone per this checkpoint's scope
-    // -- "виправ лише перелічені 5D findings"): evaluateVerification()
-    // only ever inspects `after.violations[]` and `after.geometry`, never
-    // `after.categories.margins.manualReview[]` or `after.verdict`. Since
-    // the surviving ambiguity lives in manualReview, not violations[],
-    // verifyAutofix() reports VERIFIED here even though after.verdict is
-    // still MANUAL_REVIEW_REQUIRED. This is a real contract inconsistency
-    // (verification:'VERIFIED' coexisting with verdict !== 'READY') for a
-    // FUTURE checkpoint to close -- documented, not silently left
-        // unasserted, so a future change to evaluateVerification() that
-    // fixes it will fail this exact assertion as an intentional prompt to
-    // update this comment, not an accidental regression.
-    assert.equal(result.verification, 'VERIFIED', 'C3 (documents the gap): verifyAutofix() does not yet account for a persisting manualReview/ambiguous entry -- see comment above');
+    // CHECKPOINT 5E (2026-10-05): the gap documented here through
+    // CHECKPOINT 5D is now closed. evaluateVerification() added a direct
+    // `after.verdict !== 'READY'` check (alongside, not instead of, its
+    // four existing violations[]/geometry-derived checks), specifically
+    // because the surviving ambiguity above lives in manualReview/verdict,
+    // never in violations[] at all -- so no amount of smarter counting
+    // over violations[] alone could have caught it. verifyAutofix() now
+    // correctly refuses VERIFIED whenever after.verdict isn't READY, which
+    // this exact scenario (ambiguity surviving the fix) exercises for real.
+    assert.equal(result.verification, 'MANUAL_REVIEW_REQUIRED', 'C3 (CHECKPOINT 5E fix): a persisting manualReview/ambiguous entry (after.verdict !== READY) now correctly blocks VERIFIED');
+    assert.ok(result.reasons.includes('MANUAL_REVIEW_REMAINS'), 'C3: reason explicitly names the surviving manual-review state');
   });
 
   console.log(`\nAll ${caseCount} checkpoint5d.test.js cases passed.`);

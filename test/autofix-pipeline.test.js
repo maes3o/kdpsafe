@@ -243,9 +243,10 @@ async function partB_applyAutofixAndEvaluation() {
     const afterFixed = {
       violations: [], // the object moved; no violation remains at all
       geometry: { pages: [{ allowedSides: { top: true, bottom: true, left: true, right: true } }] },
+      verdict: 'READY', // CHECKPOINT 5E: evaluateVerification() now also requires after.verdict === 'READY'
     };
     const okResult = evaluateVerification(before, afterFixed, appliedOk, []);
-    assert.deepEqual(okResult, { verification: 'VERIFIED', reasons: [] }, 'B3a: problem gone, nothing new, geometry resolved -> VERIFIED');
+    assert.deepEqual(okResult, { verification: 'VERIFIED', reasons: [] }, 'B3a: problem gone, nothing new, geometry resolved, verdict READY -> VERIFIED');
 
     const afterStillBroken = {
       violations: [{ pageIndex: 0, rawBBoxPt: plan.rawBBoxPt }], // same bbox, unmoved
