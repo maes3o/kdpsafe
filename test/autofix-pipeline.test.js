@@ -13,22 +13,37 @@
  * runPreflight()) -- never asserted from the applyAutofix() call's own
  * reported success alone.
  *
- * TESTING-STRATEGY NOTE (read before changing any of this): the real
- * engine's horizontal safe-zone geometry is, today, PERMANENTLY unresolved
- * (lib/zoneGeometry.js -- see that file's header / CHECKPOINT 2's audit).
- * lib/orchestrator.js's allSidesAllowed() therefore deliberately never lets
- * planAutofix() run through the real runPreflight() pipeline at all right
- * now -- not a bug, a safety property (see that function's own jsdoc).
- * Consequently:
+ * TESTING-STRATEGY NOTE (read before changing any of this -- UPDATED
+ * CHECKPOINT 5D, 2026-10-05, after this note itself was found stale during
+ * the 5D audit): before CHECKPOINT 5C, the real engine's horizontal
+ * safe-zone geometry was PERMANENTLY unresolved for every page, so
+ * lib/orchestrator.js's allSidesAllowed() never let planAutofix() run
+ * through the real runPreflight() pipeline at all. CHECKPOINT 5C changed
+ * that: when userIntent.bleed === false and the page-count-dependent
+ * margins are known, horizontal geometry now resolves -- either exactly
+ * (userIntent.readingDirection + pageContext.pageNumber given) or to the
+ * CHECKPOINT-5A-proven-safe conservative intersection (neither given) --
+ * see lib/zones.js's own header for the full contract. Real,
+ * end-to-end-reachable VERIFIED outcomes for conservative/exact/mixed
+ * ambiguous+definite autofix are covered in test/checkpoint5d.test.js, not
+ * here -- this file's Part C below is kept deliberately minimal (no
+ * explicit /TrimBox at all in its fixture) and intentionally still proves
+ * the OTHER, still-permanent limitation: a page with NO real /TrimBox
+ * anchor in the file stays entirely geometry-`unavailable` (not merely
+ * horizontally unresolved) regardless of CHECKPOINT 5C, because
+ * lib/zoneGeometry.js's resolveTrimBoxPt() has no anchorless fallback for
+ * trim itself (unlike the one CHECKPOINT 5C added for bleed) -- see that
+ * function's own jsdoc. Consequently:
  *   - Parts A/B below test the byte-patch mechanics (geometryRewriter,
  *     pdfAutofixWriter) and the pure comparison logic (evaluateVerification)
  *     directly, against hand-built plans/results -- mirroring exactly how
  *     CHECKPOINT 3's Part A tested resolveAllowedSides() against geometry
- *     shapes the real engine can't produce yet.
- *   - Part C is the one genuine, no-shortcuts, real-pipeline integration
- *     test: calling verifyAutofix() through the ACTUAL runPreflight() on an
- *     ACTUAL PDF, proving today's honest, currently-reachable behavior
- *     (requirement #6 -- unresolved geometry => NOT VERIFIED) with zero
+ *     shapes the real engine couldn't produce yet at the time.
+ *   - Part C is a genuine, no-shortcuts, real-pipeline integration test:
+ *     calling verifyAutofix() through the ACTUAL runPreflight() on an
+ *     ACTUAL PDF that has no explicit /TrimBox, proving that THIS
+ *     specific, still-real limitation (no trim anchor => NOT VERIFIED,
+ *     NO_APPLICABLE_AUTOFIX) continues to hold post-5C, with zero
  *     hand-built intermediate objects.
  */
 
@@ -311,22 +326,31 @@ async function partB_applyAutofixAndEvaluation() {
   console.log('[Part B] applyAutofix() + evaluateVerification(): all 6 cases passed.');
 }
 
-// --- Part C: the one genuine, real-pipeline integration test -- no
-// hand-built plans or results anywhere, just verifyAutofix() against a
-// real PDF through the real runPreflight(). Proves requirement #6
-// (unresolved geometry => NOT VERIFIED) and requirement #9 end-to-end. ---
+// --- Part C: a genuine, real-pipeline integration test -- no hand-built
+// plans or results anywhere, just verifyAutofix() against a real PDF
+// through the real runPreflight(). Proves requirement #9 end-to-end for
+// the one geometry state that stays permanently unavailable even after
+// CHECKPOINT 5C: a page with no explicit /TrimBox at all. (The
+// conservative/exact/mixed-ambiguous VERIFIED-reaching cases CHECKPOINT 5C
+// made newly reachable live in test/checkpoint5d.test.js, not here -- see
+// this file's header, updated CHECKPOINT 5D after being found stale.) ---
 
 async function partC_realPipelineIntegration() {
+  // No explicit /TrimBox anywhere in this fixture (makeFixturePdf() above
+  // never calls page.setTrimBox()) -- resolveTrimBoxPt() in
+  // lib/zoneGeometry.js has no anchorless fallback for trim itself (unlike
+  // the CHECKPOINT-5C-added one for bleed), so trimBoxPt stays null and
+  // geometryStatus stays 'unavailable' regardless of readingDirection/
+  // pageCount/bleed choice. This is a DIFFERENT, narrower reason than the
+  // pre-5C "horizontal geometry is architecturally always unresolved"
+  // this test originally documented -- updated here, not just left stale.
   const bytes = await makeFixturePdf({ widthIn: 6, heightIn: 9, rects: [{ x: 5, y: 100, width: 20, height: 20 }] });
   const opts = { userIntent: { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false }, pageContext: { pageCount: 100 } };
 
   const result = await verifyAutofix(bytes, opts);
 
-  // Today's honest reality: the real engine's horizontal geometry is always
-  // unresolved (lib/zoneGeometry.js), so runPreflight() never produces an
-  // `applyable: true` plan at all -- verifyAutofix() must say so plainly,
-  // never claim VERIFIED on the strength of "nothing needed fixing".
-  assert.equal(result.verification, 'MANUAL_REVIEW_REQUIRED', 'C1: verifyAutofix() against the real pipeline is NOT VERIFIED today (unresolved horizontal geometry)');
+  assert.equal(result.before.geometry.pages[0].status, 'unavailable', 'C1 precondition: no explicit /TrimBox -> geometry genuinely unavailable (not merely conservative/exact-unresolved)');
+  assert.equal(result.verification, 'MANUAL_REVIEW_REQUIRED', 'C1: verifyAutofix() against a page with no trim anchor at all is NOT VERIFIED');
   assert.ok(result.reasons.includes('NO_APPLICABLE_AUTOFIX'), 'C1: reason explicitly names that nothing was applicable, not a vague failure');
   assert.equal(result.after, null, 'C1: no AFTER re-check PDF was even generated, since nothing was applied');
   assert.deepEqual(result.outputBytes, bytes, 'C1: output bytes equal the untouched original when nothing was applicable');
@@ -338,7 +362,7 @@ async function partC_realPipelineIntegration() {
   const reDetect = await analyzePageObjects(bytes, 0);
   assert.equal(reDetect[0].rawBBoxPt.minX, 5, 'C1: original bytes passed to verifyAutofix were never mutated');
 
-  console.log('[Part C] verifyAutofix() real-pipeline integration: 1 case passed.');
+  console.log('[Part C] verifyAutofix() real-pipeline integration (no-trim-anchor case): 1 case passed.');
 }
 
 // --- Part D: regression for the real, pre-existing multi-page bug found
