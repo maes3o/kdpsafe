@@ -88,7 +88,7 @@ describe('verdict states', () => {
     await uploadAndRun(user, screen);
 
     expect(await screen.findByTestId('verdict-card')).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION');
-    expect(screen.getByText('2 confirmed problem(s)')).toBeInTheDocument();
+    expect(screen.getByText('Confirmed problems: 2')).toBeInTheDocument();
     const list = screen.getByTestId('issue-list');
     expect(within(list).getByText('Page 3')).toBeInTheDocument();
     expect(within(list).getByText(/Graphic extends 0\.056 in past the safe margin \(top\)/)).toBeInTheDocument();

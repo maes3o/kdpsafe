@@ -7,7 +7,7 @@ import { ambiguousEntries, applyablePlans, buildMarks, planId } from './workspac
 import { baseName, buildReport, downloadBlob } from './workspace/report';
 import { EmptyState } from './components/EmptyState';
 import { BusyState } from './components/BusyState';
-import { DocumentSummary } from './components/DocumentSummary';
+import { DocumentDetails, DocumentHeader } from './components/DocumentSummary';
 import { SettingsForm } from './components/SettingsForm';
 import { VerdictCard } from './components/VerdictCard';
 import { VerificationCard } from './components/VerificationCard';
@@ -124,7 +124,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
       </div>
 
       <aside aria-label="KDPSafe" className="order-2 min-h-0 space-y-5 overflow-y-auto bg-bg p-4 lg:order-1">
-        <DocumentSummary file={file} inspection={inspection} intent={intent} onReplace={ws.reset} />
+        <DocumentHeader file={file} onReplace={ws.reset} />
 
         <details open={!intent} className="rounded-lg border border-border">
           <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 px-3 py-2">
@@ -173,6 +173,8 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
                 disabled={working}
               />
             )}
+
+            <DocumentDetails inspection={shown} intent={intent} />
 
             <IssueList inspection={shown} afterFix={fixedAvailable} activeId={activeId} onFocus={focusOn} />
 

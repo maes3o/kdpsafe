@@ -18,10 +18,10 @@ export function VerificationCard({ fix, onDiscard }: { fix: VerifyAutofixResult;
       data-testid="verification-card"
       data-verification={fix.verification}
       data-after={fix.after === null ? 'null' : 'result'}
-      className={`rounded-lg border-2 p-4 ${tone.border} ${tone.soft}`}
+      className={`rounded-lg border p-3 ${tone.border} ${tone.soft}`}
     >
-      <p className={`flex items-center gap-2 text-lg font-bold ${tone.text}`}>
-        <span aria-hidden="true" className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-current font-mono text-sm">
+      <p className={`flex items-center gap-2 text-sm font-bold tracking-wide ${tone.text}`}>
+        <span aria-hidden="true" className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current font-mono text-xs">
           {glyph}
         </span>
         {verified ? t('verifiedTitle') : t('notVerifiedTitle')}

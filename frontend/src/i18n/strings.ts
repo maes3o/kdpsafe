@@ -82,8 +82,8 @@ const en = {
   verdictNeedsAttentionBody: 'Confirmed problems were found. They need to be fixed before this PDF is ready.',
   verdictManualReviewBody:
     'KDPSafe cannot safely decide or fix this automatically. This does not necessarily mean the PDF is wrong.',
-  countConfirmed: '{n} confirmed problem(s)',
-  countManual: '{n} item(s) to review manually',
+  countConfirmed: 'Confirmed problems: {n}',
+  countManual: 'Items to review manually: {n}',
   questionIsSafe: 'Is this PDF safe for KDP?',
 
   // Verification
@@ -95,8 +95,8 @@ const en = {
     'The fix could not be verified, so the changed file is not offered for download. Your original file is untouched.',
   verificationReasonsTitle: 'Why',
   discardFix: 'Discard fix result',
-  appliedChanges: '{n} change(s) applied',
-  skippedChanges: '{n} change(s) skipped',
+  appliedChanges: 'Changes applied: {n}',
+  skippedChanges: 'Changes skipped: {n}',
   verifying_pending: 'Verification pending',
 
   // Issues
@@ -106,7 +106,7 @@ const en = {
   issuesRemainingAfterFix: 'Remaining after the fix attempt',
   noIssues: 'No issues found.',
   pageNumber: 'Page {page}',
-  pageGroupCount: '{n} item(s)',
+  pageGroupCount: 'Items: {n}',
   showInPdf: 'Show in PDF',
   severityWarning: 'Minor',
   severityError: 'Error',
@@ -132,15 +132,15 @@ const en = {
   orientTitle: 'Which way does your book read?',
   orientBody:
     'KDPSafe cannot tell which side is the inner (gutter) margin. Choose the reading direction and the check runs again.',
-  orientAffected: 'Affects {n} object(s) on {pages}.',
+  orientAffected: 'Objects affected: {n} · {pages}',
   orientChooseLtr: 'Left to right',
   orientChooseRtl: 'Right to left',
   orientRerunNote: 'The engine decides the new result, not this choice.',
-  pagesList: 'page(s) {list}',
+  pagesList: 'pages {list}',
 
   // Autofix
   autofixTitle: 'A safe fix is available',
-  autofixIntro: 'KDPSafe can move {n} object(s) back inside the safe margin. Nothing changes until you approve.',
+  autofixIntro: 'Objects KDPSafe can move back inside the safe margin: {n}. Nothing changes until you approve.',
   autofixBefore: 'Before',
   autofixChange: 'What will change',
   autofixAfter: 'After',
@@ -332,14 +332,14 @@ const uk: Record<StringKey, string> = {
   orientTitle: 'У якому напрямку читається ваша книга?',
   orientBody:
     'KDPSafe не може визначити, яка сторона є внутрішнім полем (корінцем). Оберіть напрямок читання — і перевірка запуститься знову.',
-  orientAffected: 'Стосується об’єктів: {n}, {pages}.',
+  orientAffected: 'Стосується об’єктів: {n} · {pages}',
   orientChooseLtr: 'Зліва направо',
   orientChooseRtl: 'Справа наліво',
   orientRerunNote: 'Новий результат визначає рушій, а не цей вибір.',
   pagesList: 'сторінки {list}',
 
   autofixTitle: 'Доступне безпечне виправлення',
-  autofixIntro: 'KDPSafe може повернути об’єкти ({n}) всередину безпечного поля. Нічого не зміниться, доки ви не підтвердите.',
+  autofixIntro: 'Об’єктів, які KDPSafe може повернути всередину безпечного поля: {n}. Нічого не зміниться, доки ви не підтвердите.',
   autofixBefore: 'До',
   autofixChange: 'Що зміниться',
   autofixAfter: 'Після',
