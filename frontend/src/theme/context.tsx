@@ -11,18 +11,26 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 const STORAGE_KEY = 'kdpsafe.theme';
 
 function initialMode(): ThemeMode {
-  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
-  if (stored === 'light' || stored === 'dark') return stored;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch {
+    /* storage unavailable */
+  }
   if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark';
   return 'light';
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>(initialMode);
+export function ThemeProvider({ children, initial }: { children: ReactNode; initial?: ThemeMode }) {
+  const [mode, setMode] = useState<ThemeMode>(initial ?? initialMode);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', mode === 'dark');
-    localStorage.setItem(STORAGE_KEY, mode);
+    try {
+      localStorage.setItem(STORAGE_KEY, mode);
+    } catch {
+      /* storage unavailable */
+    }
   }, [mode]);
 
   const value = useMemo<ThemeContextValue>(

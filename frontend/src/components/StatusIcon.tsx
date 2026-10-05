@@ -1,30 +1,12 @@
-import type { StatusIconKind } from '../engine/verdictDisplay';
+import { GLYPH, TONE, type Tone } from './ui';
 
-const GLYPH: Record<StatusIconKind, string> = {
-  check: '✓',
-  warning: '!',
-  cross: '×',
-  question: '?',
-};
-
-const COLOR_CLASS: Record<StatusIconKind, string> = {
-  check: 'text-status-ready',
-  warning: 'text-status-attention',
-  cross: 'text-status-error',
-  question: 'text-status-review',
-};
-
-/**
- * Renders the STATUS RULE glyph + a text label side by side. Color is
- * decorative only here -- `aria-hidden` on the glyph plus the always-
- * rendered text label is what actually communicates state, per the
- * explicit "never color alone" rule.
- */
-export function StatusIcon({ kind, label }: { kind: StatusIconKind; label: string }) {
+/** Glyph + text label. The glyph and the text carry the state; colour only
+ * reinforces it (NEVER colour alone). */
+export function StatusIcon({ tone, label, className = '' }: { tone: Tone; label: string; className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 font-medium ${COLOR_CLASS[kind]}`}>
-      <span aria-hidden="true" className="font-mono text-base leading-none">
-        {GLYPH[kind]}
+    <span className={`inline-flex items-center gap-1.5 font-medium ${TONE[tone].text} ${className}`}>
+      <span aria-hidden="true" className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current font-mono text-xs leading-none">
+        {GLYPH[tone]}
       </span>
       <span>{label}</span>
     </span>

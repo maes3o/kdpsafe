@@ -1,44 +1,69 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
 
-/* Class-based dark mode (ThemeProvider toggles `.dark` on <html>), rather
- * than Tailwind v4's default prefers-color-scheme-only variant. */
+/* Class-based dark mode (ThemeProvider toggles `.dark` on <html>). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Design tokens -- FRONTEND-01 scope: the minimal palette the shell
- * actually uses. Intentionally restrained; full visual polish (Inter /
- * JetBrains Mono webfonts, refined spacing scale, etc.) is deferred to a
- * future checkpoint. Tailwind v4 CSS-first theme config. */
+/* Design tokens. Components use these utilities (bg-bg, text-ink,
+ * border-border, text-status-ready ...) -- never raw colours. The dark set is
+ * a re-tuned palette (lower-chroma surfaces, lighter state hues), not an
+ * inversion. State colours are always paired with an icon glyph and text. */
 @theme {
-  --font-sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  --font-sans: 'Inter Variable', Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
 
-  --color-ink: #16171d;
-  --color-ink-muted: #6b6375;
+  --color-ink: #1b1f27;
+  --color-ink-muted: #5b6372;
   --color-bg: #ffffff;
-  --color-bg-panel: #fafafa;
-  --color-border: #e5e4e7;
-  --color-border-strong: #c7c5cc;
+  --color-bg-panel: #f6f7f9;
+  --color-bg-hover: #eceef2;
+  --color-viewer: #e3e5ea;
+  --color-border: #dde0e7;
+  --color-border-strong: #bfc5d0;
+  --color-accent: #2557c7;
+  --color-accent-ink: #ffffff;
 
-  /* Status colors -- used only alongside an icon + text label, never alone
-   * (see components/StatusIcon.tsx). */
-  --color-status-ready: #15803d;
-  --color-status-attention: #b45309;
-  --color-status-review: #6d28d9;
-  --color-status-error: #b91c1c;
+  --color-status-ready: #166534;
+  --color-status-ready-soft: #e6f4ea;
+  --color-status-attention: #8f3f08;
+  --color-status-attention-soft: #fdf0dc;
+  --color-status-review: #5b3fb0;
+  --color-status-review-soft: #eeeafa;
+  --color-status-error: #b42318;
+  --color-status-error-soft: #fcebe9;
+
+  --shadow-page: 0 1px 3px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.06);
 }
 
 .dark {
-  --color-ink: #f3f4f6;
-  --color-ink-muted: #9ca3af;
-  --color-bg: #16171d;
-  --color-bg-panel: #1b1c23;
-  --color-border: #2e303a;
-  --color-border-strong: #3f414c;
+  --color-ink: #e6e9ef;
+  --color-ink-muted: #98a1b0;
+  --color-bg: #13151b;
+  --color-bg-panel: #181b22;
+  --color-bg-hover: #222631;
+  --color-viewer: #0d0e12;
+  --color-border: #2a2f3b;
+  --color-border-strong: #404757;
+  --color-accent: #8aaaff;
+  --color-accent-ink: #0d1424;
 
-  --color-status-ready: #4ade80;
-  --color-status-attention: #fbbf24;
-  --color-status-review: #c4b5fd;
-  --color-status-error: #f87171;
+  --color-status-ready: #6ddb98;
+  --color-status-ready-soft: #14291e;
+  --color-status-attention: #f2b658;
+  --color-status-attention-soft: #2d2512;
+  --color-status-review: #bba9ff;
+  --color-status-review-soft: #231d3b;
+  --color-status-error: #ff8f85;
+  --color-status-error-soft: #331b1a;
+
+  --shadow-page: 0 1px 3px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
@@ -46,4 +71,61 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Overlay colours sit on the (always white) PDF page, so they are theme
+ * independent. Style (solid / long dash / dotted) also distinguishes them. */
+.guide-trim {
+  stroke: #1d4ed8;
+}
+.guide-bleed {
+  stroke: #c2410c;
+}
+.guide-safe {
+  stroke: #0f766e;
+}
+.mark-problem .mark-box,
+.mark-problem .mark-glyph {
+  stroke: #c01818;
+  fill: #c01818;
+}
+.mark-review .mark-box,
+.mark-review .mark-glyph {
+  stroke: #7c3aed;
+  fill: #7c3aed;
+}
+.mark-fixed .mark-box,
+.mark-fixed .mark-glyph {
+  stroke: #15803d;
+  fill: #15803d;
+}
+.mark-glyph {
+  stroke: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes kdp-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+.indeterminate-bar {
+  animation: kdp-indeterminate 1.4s ease-in-out infinite;
 }

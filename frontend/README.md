@@ -1,32 +1,15 @@
-# React + TypeScript + Vite
+# KDPSafe frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React 19 + TypeScript + Vite. All compliance logic lives in the frozen Phase 1
+engine (`../lib`); this app only collects `userIntent`, calls the engine in a
+Web Worker, and displays what it returns.
 
-Currently, two official plugins are available:
+- `npm run dev` / `npm run build` (typecheck + build)
+- `npm test` — vitest (UI states, flows, i18n, theme)
+- `npm run e2e` — real-browser smoke test (Playwright + Chromium) against
+  `vite preview`: `node e2e/make-fixtures.cjs && npm run build && npx vite preview --port 4173`,
+  then `PLAYWRIGHT_PATH=<path to playwright> npm run e2e`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Browser autofix: the engine's autofix writer needs Node's `Buffer`/`zlib`. The
+worker provides `buffer` and aliases `zlib` to a fflate-backed shim
+(`src/engine/zlibShim.ts`); the engine itself is unmodified.

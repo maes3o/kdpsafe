@@ -1,78 +1,55 @@
 /**
  * Preflight Web Worker -- the ONLY place in the frontend that imports the
- * frozen Phase 1 engine (lib/orchestrator.js). Runs runPreflight() off the
- * main thread so a large/complex PDF never blocks the UI.
+ * frozen Phase 1 engine (lib/orchestrator.js). Runs runPreflight() and
+ * verifyAutofix() off the main thread so a large PDF never blocks the UI.
  *
- * SCOPE OF THIS CHECKPOINT (FRONTEND-01): only the READ-ONLY
- * runPreflight() path is wired here. verifyAutofix()'s "apply" branch
- * (lib/orchestrator.js -> lib/pdfAutofixWriter.js -> lib/geometryRewriter.js)
- * depends on Node's `Buffer`/`zlib`.
- *
- * Empirically confirmed via `vite build`: this does NOT fail the build.
- * Vite/rolldown externalizes `zlib` (a warning, not an error) because
- * lib/orchestrator.js's `require('./pdfAutofixWriter')` inside
- * verifyAutofix() is lazy, and esbuild/rolldown still resolves it eagerly
- * at bundle time even though this worker never calls verifyAutofix(). The
- * externalized import is harmless for THIS worker because that code path
- * is never reached at runtime here. It becomes a real, genuine blocker
- * only once the frontend actually wires up the autofix-APPLY UX and tries
- * to call verifyAutofix()'s applying branch in the browser -- `zlib` has
- * no browser polyfill loaded, so that call would throw at runtime. That
- * is deliberately NOT worked around in this checkpoint; it is a decision
- * for whichever future checkpoint builds the autofix-apply flow.
+ * Autofix in the browser: verifyAutofix() -> lib/pdfAutofixWriter.js needs
+ * Node's `Buffer` and `zlib`. Rather than touching the frozen engine, the
+ * worker provides them: `bufferPolyfill` (the `buffer` package) and a
+ * vite alias of `zlib` -> `zlibShim.ts` (fflate's zlib-format deflate).
+ * The engine's own logic -- plan, byte patch, AFTER preflight, verification
+ * contract -- runs unmodified.
  */
 
-import { runPreflight } from '../../../lib/orchestrator';
-import type { InspectionResult, PreflightOptions } from './types';
+import './bufferPolyfill';
+import { configurePdfjs } from './pdfjsSetup';
+import { runPreflight, verifyAutofix } from '../../../lib/orchestrator';
+import type { InspectionResult, PreflightOptions, VerifyAutofixResult } from './types';
 
-export interface PreflightRequest {
-  type: 'runPreflight';
+export interface PreflightWorkerRequest {
+  type: 'runPreflight' | 'verifyAutofix';
   requestId: number;
   pdfBytes: ArrayBuffer;
   options: PreflightOptions;
 }
 
-export type PreflightWorkerRequest = PreflightRequest;
+export type PreflightWorkerResponse =
+  | { type: 'success'; requestId: number; result: InspectionResult | VerifyAutofixResult }
+  | { type: 'error'; requestId: number; message: string };
 
-export interface PreflightSuccessResponse {
-  type: 'runPreflight:success';
-  requestId: number;
-  result: InspectionResult;
-}
-
-export interface PreflightErrorResponse {
-  type: 'runPreflight:error';
-  requestId: number;
-  message: string;
-}
-
-export type PreflightWorkerResponse = PreflightSuccessResponse | PreflightErrorResponse;
-
+// The engine is untyped JS; src/engine/types.ts is the hand-derived
+// contract, so results are cast through `unknown` explicitly.
 self.onmessage = async (event: MessageEvent<PreflightWorkerRequest>) => {
   const msg = event.data;
-
-  if (msg.type === 'runPreflight') {
-    try {
-      // The engine is plain untyped JS (allowJs, no .d.ts) -- TS infers a
-      // structural shape from the actual code that's close but not
-      // identical to our hand-derived InspectionResult (e.g. literal
-      // `string` vs our narrower unions), so a direct assertion is
-      // rejected as insufficiently overlapping. `unknown` is the correct,
-      // explicit way to say "trust the hand-derived contract here", not a
-      // type-safety hole specific to this call.
-      const result = (await runPreflight(new Uint8Array(msg.pdfBytes), {
-        userIntent: msg.options.userIntent,
-        pageContext: msg.options.pageContext,
-      })) as unknown as InspectionResult;
-      const response: PreflightSuccessResponse = { type: 'runPreflight:success', requestId: msg.requestId, result };
-      self.postMessage(response);
-    } catch (err) {
-      const response: PreflightErrorResponse = {
-        type: 'runPreflight:error',
-        requestId: msg.requestId,
-        message: err instanceof Error ? err.message : String(err),
-      };
-      self.postMessage(response);
+  const opts = { userIntent: msg.options.userIntent, pageContext: msg.options.pageContext };
+  try {
+    await configurePdfjs();
+    const bytes = new Uint8Array(msg.pdfBytes);
+    if (msg.type === 'runPreflight') {
+      const result = (await runPreflight(bytes, opts)) as unknown as InspectionResult;
+      self.postMessage({ type: 'success', requestId: msg.requestId, result } satisfies PreflightWorkerResponse);
+    } else {
+      const result = (await verifyAutofix(bytes, opts)) as unknown as VerifyAutofixResult;
+      // outputBytes' buffer is transferred, not copied.
+      const out = result.outputBytes;
+      const transfer = out.buffer instanceof ArrayBuffer ? [out.buffer] : [];
+      self.postMessage({ type: 'success', requestId: msg.requestId, result } satisfies PreflightWorkerResponse, { transfer });
     }
+  } catch (err) {
+    self.postMessage({
+      type: 'error',
+      requestId: msg.requestId,
+      message: err instanceof Error ? (err.stack ?? err.message) : String(err),
+    } satisfies PreflightWorkerResponse);
   }
 };
