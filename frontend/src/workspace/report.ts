@@ -4,15 +4,18 @@
  * returned (byte buffers excluded).
  */
 
-import type { InspectionResult, UserIntent, VerifyAutofixResult } from '../engine/types';
+import type { InspectionResult, PageGeometryAssessment, UserIntent, VerifyAutofixResult } from '../engine/types';
+import type { NormalizationRecord } from './useWorkspace';
 
 export function buildReport(args: {
   fileName: string;
   intent: UserIntent;
   inspection: InspectionResult;
   fix: VerifyAutofixResult | null;
+  geometry?: PageGeometryAssessment | null;
+  normalization?: NormalizationRecord | null;
 }) {
-  const { fileName, intent, inspection, fix } = args;
+  const { fileName, intent, inspection, fix, geometry = null, normalization = null } = args;
   return {
     tool: 'KDPSafe',
     scope: 'Phase 1: margins and bleed only',
@@ -20,6 +23,7 @@ export function buildReport(args: {
     file: fileName,
     userIntent: intent,
     inspection,
+    pageGeometry: { assessment: geometry, normalization },
     autofix: fix
       ? {
           verification: fix.verification,

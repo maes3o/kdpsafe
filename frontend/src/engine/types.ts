@@ -113,7 +113,8 @@ export type ManualReviewReason =
   | 'BLEED_VIOLATION'
   | 'TEXT_LEM_VIOLATION'
   | 'LEM_VIOLATION_OVER_AUTOFIX_THRESHOLD'
-  | 'HORIZONTAL_GEOMETRY_UNRESOLVED';
+  | 'HORIZONTAL_GEOMETRY_UNRESOLVED'
+  | 'PAGE_ROTATION_UNSUPPORTED';
 
 interface ManualReviewEntryBase {
   pageIndex: number;
@@ -138,7 +139,12 @@ export interface AmbiguousOrientationEntry extends ManualReviewEntryBase {
 /** Everything else: reported, not resolvable by any UI input -- the user
  * must fix the source file or accept manual review. */
 export interface OtherManualReviewEntry extends ManualReviewEntryBase {
-  reason: 'BLEED_VIOLATION' | 'TEXT_LEM_VIOLATION' | 'LEM_VIOLATION_OVER_AUTOFIX_THRESHOLD' | 'HORIZONTAL_GEOMETRY_UNRESOLVED';
+  reason:
+    | 'BLEED_VIOLATION'
+    | 'TEXT_LEM_VIOLATION'
+    | 'LEM_VIOLATION_OVER_AUTOFIX_THRESHOLD'
+    | 'HORIZONTAL_GEOMETRY_UNRESOLVED'
+    | 'PAGE_ROTATION_UNSUPPORTED';
 }
 
 export type ManualReviewEntry = AmbiguousOrientationEntry | OtherManualReviewEntry;
@@ -186,8 +192,11 @@ export interface MarginsCategory {
 export interface InspectionResult {
   document: {
     pageCount: number;
-    trimWidthIn: number;
-    trimHeightIn: number;
+    /** PAGE size (CropBox clipped to MediaBox, rotation applied) of page 1.
+     * NOT a trim size: the trim is only known from an explicit /TrimBox or
+     * from the user's selection (see PageGeometryAssessment). */
+    pageWidthIn: number;
+    pageHeightIn: number;
     pageSizeConsistent: boolean;
   };
   geometry: {
@@ -289,4 +298,92 @@ export interface PageContext {
 export interface PreflightOptions {
   userIntent: UserIntent;
   pageContext?: PageContext;
+}
+
+// ---------------------------------------------------------------------
+// Page geometry (lib/pageGeometry.js) -- page BOXES, never content
+// ---------------------------------------------------------------------
+
+export type GeometryCategory =
+  | 'EXACT_TRIM_PRESENT'
+  | 'EXACT_PAGE_NO_TRIM'
+  | 'EXACT_PAGE_WITH_BLEED'
+  | 'SIMILAR_COMPATIBLE'
+  | 'DIFFERENT_SIZE'
+  | 'ROTATED_UNCERTAIN'
+  | 'MIXED_DOCUMENT'
+  | 'CONFLICTING_BOXES'
+  | 'DO_NOT_TOUCH';
+
+/** 0 nothing to do | 1 metadata-only (add TrimBox) | 2 trim+bleed with known
+ * reading direction | 3 close-but-different (manual) | 4 different size
+ * (manual) | 5 do not touch (manual). */
+export type GeometryTier = 0 | 1 | 2 | 3 | 4 | 5;
+
+export interface PdfRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface PageGeometryPageAssessment {
+  pageIndex: number;
+  pageNumber: number;
+  parity: 'odd' | 'even';
+  category: GeometryCategory;
+  reasons: string[];
+  rotationDeg: number;
+  effectiveSizePt: { widthPt: number; heightPt: number };
+  mediaBox: PdfRect;
+  cropBox: { explicit: boolean } & PdfRect;
+  trimBox: { explicit: boolean } & Partial<PdfRect>;
+  bleedBox: { explicit: boolean } & Partial<PdfRect>;
+}
+
+export interface NormalizationPlan {
+  kind: 'ADD_TRIM_BOX' | 'DEFINE_TRIM_BOX_FROM_BLEED';
+  tier: 1 | 2;
+  changes: { pageIndex: number; before: { trimBox: null; bleedBox: null }; set: { trimBox: PdfRect; bleedBox?: PdfRect } }[];
+  /** Always: page metadata only. */
+  guarantees: { contentStreamsUnchanged: true; scales: false; crops: false; moves: false; rotates: false };
+}
+
+/** What KDPSafe knows about the PDF's page boxes versus the user's
+ * selection. Analysis only: nothing here has changed the file. */
+export interface PageGeometryAssessment {
+  selectedTrim: { widthIn: number; heightIn: number };
+  bleed: boolean;
+  readingDirection: 'ltr' | 'rtl' | null;
+  pageCount: number;
+  encrypted: boolean;
+  signed: boolean;
+  pages: PageGeometryPageAssessment[];
+  category: GeometryCategory;
+  tier: GeometryTier;
+  /** Machine codes explaining the category (mapped to localized text in the UI). */
+  reasons: string[];
+  /** Effective page size of page 1, in inches (null if unreadable). */
+  pageSize: { widthIn: number; heightIn: number } | null;
+  trimBox: 'explicit' | 'missing' | 'mixed';
+  plan: NormalizationPlan | null;
+  loadError?: string;
+}
+
+export interface SafetyCheck {
+  id: string;
+  ok: boolean;
+  detail?: string;
+}
+
+/** normalizePageGeometry(): `after` is the REAL preflight of the changed
+ * file and is authoritative -- there is no separate "normalized = OK". */
+export interface NormalizationResult {
+  applied: boolean;
+  assessment: PageGeometryAssessment;
+  /** The changed bytes when `applied`, otherwise the unchanged input. */
+  outputBytes: Uint8Array;
+  safety: { ok: boolean; checks: SafetyCheck[]; failure: string | null } | null;
+  before: InspectionResult | null;
+  after: InspectionResult | null;
 }

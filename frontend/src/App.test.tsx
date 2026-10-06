@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { makeEngine, openDetails, renderApp, uploadAndRun, pdfFile } from './test/harness';
-import { AMBIGUOUS, MANUAL, NEEDS_ATTENTION, READY, WITH_PLAN, inspection, verifyResult, violation } from './test/fixtures';
+import { AMBIGUOUS, MANUAL, NEEDS_ATTENTION, READY, TIER1, TIER4, TIER5_SIGNED, UNRESOLVED_30, WITH_PLAN, assessment, inspection, normalizationResult, verifyResult, violation } from './test/fixtures';
 
 vi.mock('./components/viewer/PdfViewer', async () => await import('./test/viewerMock'));
 
@@ -226,6 +226,164 @@ describe('verdict hierarchy + mobile navigation', () => {
     expect(screen.queryByTestId('issue-list')).not.toBeInTheDocument(); // now in the Preview tab
     await user.click(screen.getByRole('button', { name: 'Back to results' }));
     expect(await screen.findByTestId('issue-list')).toBeInTheDocument();
+  });
+});
+
+describe('page geometry (TrimBox normalization)', () => {
+  const ORIGINAL_LEN = pdfFile().size;
+
+  function engineForTier1() {
+    return makeEngine({
+      preflight: (n) => (n === 1 ? UNRESOLVED_30 : READY),
+      assess: (n) => (n === 1 ? TIER1 : assessment()),
+      normalize: () => normalizationResult({ after: READY }),
+      verify: () => verifyResult({ before: READY }),
+    });
+  }
+
+  it('R. review -> apply -> real re-preflight -> actual result; nothing is written before approval', async () => {
+    const engine = engineForTier1();
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+
+    const card = await screen.findByTestId('geometry-card');
+    expect(card).toHaveAttribute('data-geometry-state', 'plan');
+    expect(card).toHaveTextContent(/page size matches the selected trim/i);
+    expect(card).toHaveTextContent('Add missing TrimBox');
+    expect(card).toHaveTextContent(/Nothing is scaled, moved, cropped or rotated/);
+    expect(engine.normalizePageGeometry).not.toHaveBeenCalled();
+    expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+
+    await user.click(within(card).getByRole('button', { name: 'Review change' }));
+    expect(screen.getByTestId('geometry-review')).toHaveTextContent('TrimBox: missing');
+    expect(screen.getByTestId('geometry-review')).toHaveTextContent('TrimBox: 6 × 9 in');
+    expect(engine.normalizePageGeometry).not.toHaveBeenCalled();
+
+    await user.click(within(card).getByRole('button', { name: 'Add TrimBox' }));
+    await waitFor(() => expect(engine.normalizePageGeometry).toHaveBeenCalledTimes(1));
+    expect(engine.normalizePageGeometry.mock.calls[0][0].length).toBe(ORIGINAL_LEN);
+
+    // The shown verdict is the engine's AFTER result, not an inference.
+    await waitFor(() => expect(verdict()).toHaveAttribute('data-verdict', 'READY'));
+    expect(screen.getByTestId('geometry-card')).toHaveAttribute('data-geometry-state', 'applied');
+    expect(screen.getByTestId('geometry-card')).toHaveTextContent('TrimBox written on 30 page(s)');
+    // VERIFIED comes from the engine's verification of the NEW bytes
+    await screen.findByTestId('verification-card');
+    expect(engine.verifyAutofix.mock.calls[0][0].length).toBe(5);
+    expect(screen.getAllByRole('button', { name: 'Download verified PDF' })[0]).toBeEnabled();
+  });
+
+  it('shows the real engine result even when it is not READY after normalization', async () => {
+    const engine = makeEngine({
+      preflight: (n) => (n === 1 ? UNRESOLVED_30 : NEEDS_ATTENTION),
+      assess: (n) => (n === 1 ? TIER1 : assessment()),
+      normalize: () => normalizationResult({ after: NEEDS_ATTENTION }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await user.click(await screen.findByRole('button', { name: 'Add TrimBox' }));
+    await waitFor(() => expect(verdict()).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION'));
+    expect(screen.queryByTestId('verification-card')).not.toBeInTheDocument();
+  });
+
+  it('undo restores the ORIGINAL bytes and re-analyses from scratch', async () => {
+    const engine = engineForTier1();
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await user.click(await screen.findByRole('button', { name: 'Add TrimBox' }));
+    await screen.findByText('TrimBox written on 30 page(s)');
+    const callsBefore = engine.runPreflight.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Restore original file' }));
+    await waitFor(() => expect(engine.runPreflight.mock.calls.length).toBe(callsBefore + 1));
+    expect(engine.runPreflight.mock.calls.at(-1)![0].length).toBe(ORIGINAL_LEN);
+  });
+
+  it('changing a setting after normalization drops it and analyses the original again', async () => {
+    const engine = engineForTier1();
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await user.click(await screen.findByRole('button', { name: 'Add TrimBox' }));
+    await screen.findByText('TrimBox written on 30 page(s)');
+    await user.click(screen.getByRole('radio', { name: /With bleed/ }));
+    await waitFor(() => expect(engine.runPreflight.mock.calls.at(-1)![1].userIntent.bleed).toBe(true));
+    expect(engine.runPreflight.mock.calls.at(-1)![0].length).toBe(ORIGINAL_LEN);
+  });
+
+  it('a failed safety check shows an error and keeps the original file and result', async () => {
+    const engine = makeEngine({
+      preflight: () => UNRESOLVED_30,
+      assess: () => TIER1,
+      normalize: () =>
+        normalizationResult({ applied: false, after: null, safety: { ok: false, checks: [{ id: 'CONTENT_STREAMS_CHANGED', ok: false }], failure: 'CONTENT_STREAMS_CHANGED' } }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await user.click(await screen.findByRole('button', { name: 'Add TrimBox' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Page boxes could not be changed/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/Your file was not modified/);
+    expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+    expect(engine.runPreflight).toHaveBeenCalledTimes(1);
+  });
+
+  it('30 identical per-page "unresolved" entries become ONE grouped item (and one count)', async () => {
+    const engine = makeEngine({ preflight: () => UNRESOLVED_30, assess: () => TIER1 });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    expect(await screen.findByTestId('verdict-headline')).toHaveTextContent('1');
+    expect(screen.getByTestId('verdict-headline')).toHaveTextContent('item needs your attention');
+    const list = screen.getByTestId('issue-list');
+    expect(within(list).getByText('Pages: 1–30')).toBeInTheDocument();
+    expect(within(list).getByText(/no explicit TrimBox/)).toBeInTheDocument();
+    expect(within(list).getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('a different page size (A4 -> 6x9) is explained, never offered as an automatic fix', async () => {
+    const engine = makeEngine({ preflight: () => UNRESOLVED_30, assess: () => TIER4 });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    const card = await screen.findByTestId('geometry-card');
+    expect(card).toHaveAttribute('data-geometry-state', 'manual');
+    expect(card).toHaveTextContent(/cannot safely determine which part of the page to keep/);
+    expect(card).toHaveTextContent('8.268 × 11.693 in');
+    expect(within(card).queryByRole('button')).not.toBeInTheDocument();
+    expect(engine.normalizePageGeometry).not.toHaveBeenCalled();
+  });
+
+  it('a signed (or encrypted) PDF is DO NOT TOUCH with the specific reason', async () => {
+    const engine = makeEngine({ preflight: () => UNRESOLVED_30, assess: () => TIER5_SIGNED });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    const card = await screen.findByTestId('geometry-card');
+    expect(card).toHaveTextContent('KDPSafe will not modify this file');
+    expect(card).toHaveTextContent(/digitally signed/);
+    expect(within(card).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('trim+bleed without a reading direction asks for it instead of guessing', async () => {
+    const engine = makeEngine({
+      preflight: () => UNRESOLVED_30,
+      assess: () => assessment({ category: 'EXACT_PAGE_WITH_BLEED', tier: 2, bleed: true, trimBox: 'missing', reasons: ['READING_DIRECTION_REQUIRED'], pageSize: { widthIn: 6.125, heightIn: 9.25 } }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen, { bleed: 'yes' });
+    const card = await screen.findByTestId('geometry-card');
+    expect(card).toHaveTextContent(/Choose a reading direction/);
+    expect(within(card).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('page size and trim are different things: stats say "Page size", Details show selected trim and TrimBox', async () => {
+    const engine = makeEngine({ preflight: () => UNRESOLVED_30, assess: () => TIER1 });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('verdict-card');
+    expect(screen.getByText('Page size')).toBeInTheDocument();
+    // the only "Trim size" is the settings legend (the user's selection), never a measured value
+    for (const dl of document.querySelectorAll('dl')) expect(dl.textContent).not.toContain('Trim size');
+    await openDetails(user, screen);
+    const d = screen.getByTestId('geometry-details');
+    expect(d).toHaveTextContent('Selected trim');
+    expect(d).toHaveTextContent('TrimBox');
+    expect(d).toHaveTextContent('Missing');
   });
 });
 

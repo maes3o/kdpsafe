@@ -1,9 +1,10 @@
 import { useI18n } from '../i18n/context';
-import type { BBoxPt, InspectionResult, ManualReviewEntry, Violation } from '../engine/types';
+import type { BBoxPt, InspectionResult, ManualReviewEntry, PageGeometryAssessment, Violation } from '../engine/types';
 import { formatPoints, objectLabel, sideLabel, sidesLabel } from '../i18n/labels';
 import { useUnit } from '../units/context';
 import type { StringKey } from '../i18n/strings';
-import { groupByPage, isAmbiguous, manualId, violationId } from '../workspace/issues';
+import { groupByPage, isAmbiguous, manualDisplayItems, violationId, type ManualDisplayItem } from '../workspace/issues';
+import { formatPageRanges } from '../i18n/labels';
 import { StatusIcon } from './StatusIcon';
 import { sectionTitle } from './ui';
 
@@ -13,12 +14,14 @@ const MANUAL_TEXT: Record<ManualReviewEntry['reason'], StringKey> = {
   TEXT_LEM_VIOLATION: 'mrText',
   LEM_VIOLATION_OVER_AUTOFIX_THRESHOLD: 'mrOverThreshold',
   HORIZONTAL_GEOMETRY_UNRESOLVED: 'mrUnresolved',
+  PAGE_ROTATION_UNSUPPORTED: 'mrRotation',
 };
 
 export type FocusIssue = (id: string, pageIndex: number, bbox?: BBoxPt) => void;
 
 interface Props {
   inspection: InspectionResult;
+  geometry: PageGeometryAssessment | null;
   afterFix: boolean;
   activeId: string | null;
   onFocus: FocusIssue;
@@ -76,28 +79,50 @@ function ViolationRow({ v, id, active, onFocus }: { v: Violation; id: string; ac
   );
 }
 
-function ManualRow({ e, id, active, onFocus }: { e: ManualReviewEntry; id: string; active: boolean; onFocus: FocusIssue }) {
+function ManualRow({
+  item,
+  active,
+  onFocus,
+  trimBoxMissing,
+}: {
+  item: ManualDisplayItem;
+  active: boolean;
+  onFocus: FocusIssue;
+  trimBoxMissing: boolean;
+}) {
   const { t } = useI18n();
   const { formatPt } = useUnit();
+  const e = item.entry;
+  // The engine's generic "unresolved" reason is explained by the missing
+  // TrimBox when that is the document-level cause (see the page-size card).
+  const text =
+    e.reason === 'HORIZONTAL_GEOMETRY_UNRESOLVED' && trimBoxMissing
+      ? t('mrUnresolvedNoTrimBox')
+      : t(MANUAL_TEXT[e.reason], { sides: sidesLabel(t, e.sides) });
   return (
     <RowButton
       active={active}
-      onClick={() => onFocus(id, e.pageIndex, isAmbiguous(e) ? e.visibleBBoxPt : undefined)}
+      onClick={() => onFocus(item.id, e.pageIndex, isAmbiguous(e) ? e.visibleBBoxPt : undefined)}
       tech={`${e.reason}${e.maxAmountPt !== null ? ` · ${t('mrMaxAmount', { amount: formatPt(e.maxAmountPt) })}` : ''}`}
     >
       <StatusIcon tone="review" label={t('verdictManualReview')} className="text-sm font-bold uppercase tracking-wider" />
-      <span className="mt-1 block text-sm">{t(MANUAL_TEXT[e.reason], { sides: sidesLabel(t, e.sides) })}</span>
+      <span className="mt-1 block text-sm">{text}</span>
+      {item.group && <span className="mt-1 block text-sm font-semibold">{t('mrPagesLabel', { pages: formatPageRanges(item.pages) })}</span>}
     </RowButton>
   );
 }
 
 /** Confirmed problems and manual-review items, grouped by page. Clicking a
  * row sends the viewer to that page (and bbox when the engine gave one). */
-export function IssueList({ inspection, afterFix, activeId, onFocus }: Props) {
+export function IssueList({ inspection, geometry, afterFix, activeId, onFocus }: Props) {
   const { t } = useI18n();
   const confirmed = inspection.violations.map((v, i) => ({ v, id: violationId(i), pageIndex: v.pageIndex }));
-  const manual = inspection.categories.margins.manualReview.map((e, i) => ({ e, id: manualId(i), pageIndex: e.pageIndex }));
-  const total = confirmed.length + manual.length;
+  const manualItems = manualDisplayItems(inspection);
+  const groups = manualItems.filter((m) => m.group);
+  const manual = manualItems.filter((m) => !m.group).map((m) => ({ m, id: m.id, pageIndex: m.entry.pageIndex }));
+  const manualTotal = groups.length + manual.length;
+  const trimBoxMissing = geometry ? geometry.trimBox !== 'explicit' : false;
+  const total = confirmed.length + manualTotal;
   const openAll = total <= 15;
 
   if (total === 0) return <p className="text-sm text-ink-muted">{t('noIssues')}</p>;
@@ -123,15 +148,22 @@ export function IssueList({ inspection, afterFix, activeId, onFocus }: Props) {
         </div>
       )}
 
-      {manual.length > 0 && (
+      {manualTotal > 0 && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold">
-            {t('issuesManual')} ({manual.length})
+            {t('issuesManual')} ({manualTotal})
           </h4>
+          {groups.length > 0 && (
+            <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg shadow-card">
+              {groups.map((g) => (
+                <ManualRow key={g.id} item={g} active={g.id === activeId} onFocus={onFocus} trimBoxMissing={trimBoxMissing} />
+              ))}
+            </ul>
+          )}
           {groupByPage(manual).map((g, gi) => (
             <PageGroup key={g.pageIndex} page={g.pageIndex + 1} count={g.items.length} defaultOpen={openAll || gi === 0}>
               {g.items.map((it) => (
-                <ManualRow key={it.id} e={it.e} id={it.id} active={it.id === activeId} onFocus={onFocus} />
+                <ManualRow key={it.id} item={it.m} active={it.id === activeId} onFocus={onFocus} trimBoxMissing={trimBoxMissing} />
               ))}
             </PageGroup>
           ))}

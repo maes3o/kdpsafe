@@ -4,7 +4,7 @@
  * worker protocol or request-id bookkeeping directly.
  */
 
-import type { InspectionResult, PreflightOptions, VerifyAutofixResult } from './types';
+import type { InspectionResult, NormalizationResult, PageGeometryAssessment, PreflightOptions, VerifyAutofixResult } from './types';
 import type { EngineApi } from './api';
 import type { PreflightWorkerRequest, PreflightWorkerResponse } from './preflight.worker';
 
@@ -54,6 +54,14 @@ export class PreflightClient implements EngineApi {
 
   verifyAutofix(pdfBytes: Uint8Array, options: PreflightOptions): Promise<VerifyAutofixResult> {
     return this.call('verifyAutofix', pdfBytes, options);
+  }
+
+  assessPageGeometry(pdfBytes: Uint8Array, options: PreflightOptions): Promise<PageGeometryAssessment> {
+    return this.call('assessPageGeometry', pdfBytes, options);
+  }
+
+  normalizePageGeometry(pdfBytes: Uint8Array, options: PreflightOptions): Promise<NormalizationResult> {
+    return this.call('normalizePageGeometry', pdfBytes, options);
   }
 
   dispose(): void {

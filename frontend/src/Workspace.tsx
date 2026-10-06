@@ -4,11 +4,12 @@ import type { AutofixPlan, BBoxPt, UserIntent } from './engine/types';
 import { useI18n } from './i18n/context';
 import { useUnit } from './units/context';
 import { useWorkspace } from './workspace/useWorkspace';
-import { ambiguousEntries, applyablePlans, buildMarks, planId } from './workspace/issues';
+import { ambiguousEntries, applyablePlans, buildMarks, manualDisplayItems, planId } from './workspace/issues';
 import { baseName, buildReport, downloadBlob } from './workspace/report';
 import { EmptyState } from './components/EmptyState';
 import { BusyState } from './components/BusyState';
 import { DocumentStats, GeometryDetails } from './components/DocumentSummary';
+import { PageGeometryCard } from './components/PageGeometryCard';
 import { FileCard } from './components/FileCard';
 import { TabPanel, Tabs } from './components/Tabs';
 import { useMediaQuery } from './hooks';
@@ -102,13 +103,14 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
   const applyable = shown ? applyablePlans(inspection!) : [];
   const ambiguous = shown ? ambiguousEntries(shown) : [];
-  const working = busy === 'preflight' || busy === 'autofix';
+  const working = busy === 'preflight' || busy === 'autofix' || busy === 'normalizing';
   const canDownloadPdf = fix?.verification === 'VERIFIED';
   const intentSub = intent ? intentSummary(intent, t, formatPair) : null;
 
   // The preview tab only exists on narrow screens (desktop always shows it).
   const activeTab = isDesktop && tab === 'preview' ? 'issues' : tab;
-  const issueCount = shown ? shown.violations.length + shown.categories.margins.manualReview.length : 0;
+  const manualCount = shown ? manualDisplayItems(shown).length : 0;
+  const issueCount = shown ? shown.violations.length + manualCount : 0;
   const viewerOnNarrow = !!inspection && activeTab === 'preview';
 
   const toolbarExtra = fixedAvailable ? (
@@ -130,7 +132,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
   const downloadPdf = () => downloadBlob(fix!.outputBytes.slice(), `${baseName(file.name)}-verified.pdf`, 'application/pdf');
   const downloadReport = () =>
     downloadBlob(
-      JSON.stringify(buildReport({ fileName: file.name, intent: intent!, inspection: inspection!, fix }), null, 2),
+      JSON.stringify(buildReport({ fileName: file.name, intent: intent!, inspection: inspection!, fix, geometry: state.geometry, normalization: state.normalization }), null, 2),
       `${baseName(file.name)}-kdpsafe-report.json`,
       'application/json'
     );
@@ -152,6 +154,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
         {busy === 'preflight' && <BusyState title={t('progressTitle')} detail={t('runningPreflightDetail')} />}
         {busy === 'autofix' && <BusyState title={t('applyingFix')} detail={t('applyingFixDetail')} />}
+        {busy === 'normalizing' && <BusyState title={t('normalizingTitle')} detail={t('normalizingDetail')} />}
 
         {failure?.stage === 'preflight' && (
           <ErrorNotice failure={failure} onRetry={intent ? () => void ws.runIntent(intent) : undefined} />
@@ -162,7 +165,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
             <VerdictCard
               verdict={shown.verdict}
               confirmedCount={shown.violations.length}
-              manualCount={shown.categories.margins.manualReview.length}
+              manualCount={manualCount}
               fixableCount={applyable.length}
             >
               {canDownloadPdf && (
@@ -181,8 +184,18 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
             {busy === 'verifying' && <BusyState title={t('verifying')} />}
             {fix && <VerificationCard fix={fix} onDiscard={ws.discardFix} />}
-            {(failure?.stage === 'autofix' || failure?.stage === 'verify') && (
+            {(failure?.stage === 'autofix' || failure?.stage === 'verify' || failure?.stage === 'normalize') && (
               <ErrorNotice failure={failure} onDismiss={ws.dismissFailure} />
+            )}
+
+            {state.geometry && (
+              <PageGeometryCard
+                geometry={state.geometry}
+                normalization={state.normalization}
+                disabled={working}
+                onApply={() => void ws.normalizeGeometry()}
+                onUndo={ws.undoNormalization}
+              />
             )}
 
             <DocumentStats inspection={shown} intent={intent} />
@@ -220,12 +233,12 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
             {activeTab === 'issues' && (
               <TabPanel id="issues">
-                <IssueList inspection={shown} afterFix={fixedAvailable} activeId={activeId} onFocus={focusOn} />
+                <IssueList inspection={shown} geometry={state.geometry} afterFix={fixedAvailable} activeId={activeId} onFocus={focusOn} />
               </TabPanel>
             )}
             {activeTab === 'details' && (
               <TabPanel id="details">
-                <GeometryDetails inspection={shown} />
+                <GeometryDetails inspection={shown} geometry={state.geometry} intent={intent} />
                 <DownloadPanel canDownloadPdf={canDownloadPdf} pending={busy === 'verifying'} onDownloadPdf={downloadPdf} onDownloadReport={downloadReport} />
                 <p className="text-xs text-ink-muted">{t('scopeNote')}</p>
                 <TechnicalDetails inspection={shown} fix={fix} />

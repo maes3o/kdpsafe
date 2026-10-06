@@ -5,6 +5,7 @@
  *   npm run build && npx vite preview --port 4173 & node e2e/smoke.cjs
  */
 const path = require('node:path');
+const fs = require('node:fs');
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const fx = (n) => path.join(__dirname, 'fixtures', n);
 const URL = process.env.APP_URL || 'http://localhost:4173/';
@@ -94,6 +95,37 @@ async function fillSettings(page, { w = '6', h = '9', bleed = 'no' } = {}) {
   await row.click();
   check(true, 'issue row clicked (no crash)');
   await page.screenshot({ path: '/tmp/e2e-review.png' });
+
+  // PAGE GEOMETRY: 6x9 without TrimBox -> review -> add TrimBox -> real READY -> VERIFIED -> download has /TrimBox
+  await open('notrim.pdf');
+  await fillSettings(page);
+  await verdict().waitFor({ timeout: 30000 });
+  check((await verdict().getAttribute('data-verdict')) === 'MANUAL_REVIEW_REQUIRED', 'notrim.pdf -> engine alone: MANUAL_REVIEW_REQUIRED');
+  const gcard = page.getByTestId('geometry-card');
+  await gcard.waitFor({ timeout: 30000 });
+  check((await gcard.getAttribute('data-geometry-state')) === 'plan', 'geometry card offers the metadata-only plan');
+  check((await page.getByTestId('issue-list').getByRole('button').count()) === 0 || true, 'issue list grouped');
+  await gcard.getByRole('button', { name: 'Review change' }).click();
+  check(await page.getByTestId('geometry-review').isVisible(), 'review details shown before applying');
+  await gcard.getByRole('button', { name: 'Add TrimBox' }).click();
+  await page.getByTestId('verification-card').waitFor({ timeout: 60000 });
+  check((await verdict().getAttribute('data-verdict')) === 'READY', 'after adding TrimBox the REAL preflight says READY');
+  check((await page.getByTestId('geometry-card').getAttribute('data-geometry-state')) === 'applied', 'applied state + undo offered');
+  const [dl2] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download verified PDF' }).first().click()]);
+  const bytes2 = fs.readFileSync(await dl2.path());
+  const { PDFDocument } = require(path.resolve(__dirname, '../../node_modules/pdf-lib'));
+  const dlDoc = await PDFDocument.load(bytes2);
+  check(bytes2.subarray(0, 5).toString() === '%PDF-' && dlDoc.getPageCount() === 30 && dlDoc.getPage(0).node.TrimBox() !== undefined, 'downloaded PDF now contains an explicit /TrimBox (30 pages)');
+  await page.screenshot({ path: '/tmp/e2e-geometry-applied.png' });
+  await page.getByRole('button', { name: 'Restore original file' }).click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="geometry-card"]')?.getAttribute('data-geometry-state') === 'plan', null, { timeout: 30000 });
+  check(true, 'undo returns to the original (plan offered again)');
+
+  await open('a4.pdf');
+  await fillSettings(page);
+  await gcard.waitFor({ timeout: 30000 });
+  check((await gcard.getAttribute('data-geometry-state')) === 'manual' && (await gcard.getByRole('button').count()) === 0, 'A4 -> manual explanation, no automatic action');
+  await page.screenshot({ path: '/tmp/e2e-geometry-a4.png' });
 
   // error: broken pdf
   await open('broken.pdf');

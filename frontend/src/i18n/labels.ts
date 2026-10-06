@@ -1,7 +1,9 @@
 /** Maps engine enum values to localized UI text. Engine values stay untouched. */
 
 import type { I18nContextValue } from './context';
-import type { StringKey } from './strings';
+import { STRINGS, type StringKey } from './strings';
+
+const STRING_KEYS = Object.keys(STRINGS.en);
 import type { ObjectType, Side } from '../engine/types';
 
 type T = I18nContextValue['t'];
@@ -49,4 +51,32 @@ export function formatInches(pt: number, format: (v: number, max?: number) => st
 /** "5.4 pt" -- secondary, technical unit. */
 export function formatPoints(pt: number, format: (v: number, max?: number) => string, unit: string): string {
   return `${format(Math.abs(pt), 1)} ${unit}`;
+}
+
+/** Geometry reason code -> localized sentence (falls back to a generic one). */
+export function geometryReasonLabel(t: T, code: string): string {
+  const key = `geoReason_${code}` as StringKey;
+  // Dynamic key: only codes present in the dictionary resolve.
+  return (STRING_KEYS as readonly string[]).includes(key) ? t(key) : t('geoReasonUnknown');
+}
+
+export function safetyCheckLabel(t: T, id: string): string {
+  const key = `chk_${id}` as StringKey;
+  return (STRING_KEYS as readonly string[]).includes(key) ? t(key) : id;
+}
+
+/** "1–30" or "1, 3, 5–7" from 1-based page numbers. */
+export function formatPageRanges(pages: number[]): string {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b);
+  const parts: string[] = [];
+  let start = 0;
+  for (let i = 1; i <= sorted.length; i++) {
+    if (i === sorted.length || sorted[i] !== sorted[i - 1] + 1) {
+      const a = sorted[start];
+      const b = sorted[i - 1];
+      parts.push(a === b ? String(a) : `${a}–${b}`);
+      start = i;
+    }
+  }
+  return parts.join(', ');
 }

@@ -8,6 +8,7 @@ const TITLE: Record<Failure['stage'], { title: StringKey; body: StringKey }> = {
   preflight: { title: 'errorPreflight', body: 'errorPreflightBody' },
   autofix: { title: 'errorAutofix', body: 'errorAutofixBody' },
   verify: { title: 'errorVerify', body: 'errorVerifyBody' },
+  normalize: { title: 'errorNormalize', body: 'errorNormalizeBody' },
 };
 
 /** A real failure, in plain language, with the raw message one click away.

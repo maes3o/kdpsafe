@@ -69,3 +69,52 @@ export function buildMarks(result: InspectionResult | null): ViewerMark[] {
   });
   return marks;
 }
+
+// ---- display grouping of manual-review entries (presentation only) ----
+
+export interface ManualDisplayItem {
+  /** `m-<index>` for a single entry (matches viewer marks), `mg-...` for a group. */
+  id: string;
+  entry: ManualReviewEntry;
+  /** Index of `entry` in the engine's manualReview[] (first one for a group). */
+  index: number;
+  /** 1-based pages the item covers (more than one only for a group). */
+  pages: number[];
+  group: boolean;
+}
+
+/**
+ * The engine reports one manual-review entry per page. When many pages share
+ * the SAME document-level cause (e.g. "no TrimBox" on all 30 pages) the UI
+ * shows one grouped item instead of 30 identical ones. Authoritative
+ * per-page data stays in the engine result (and the technical details);
+ * entries that carry a location (orientation ambiguity) are never grouped.
+ */
+export function manualDisplayItems(result: InspectionResult): ManualDisplayItem[] {
+  const entries = result.categories.margins.manualReview;
+  const buckets = new Map<string, number[]>();
+  entries.forEach((e, i) => {
+    if (isAmbiguous(e)) return;
+    const key = `${e.reason}|${[...e.sides].sort().join(',')}`;
+    const list = buckets.get(key);
+    if (list) list.push(i);
+    else buckets.set(key, [i]);
+  });
+  const items: ManualDisplayItem[] = [];
+  const emitted = new Set<string>();
+  entries.forEach((e, i) => {
+    if (isAmbiguous(e)) {
+      items.push({ id: manualId(i), entry: e, index: i, pages: [e.pageIndex + 1], group: false });
+      return;
+    }
+    const key = `${e.reason}|${[...e.sides].sort().join(',')}`;
+    const idxs = buckets.get(key)!;
+    if (idxs.length === 1) {
+      items.push({ id: manualId(i), entry: e, index: i, pages: [e.pageIndex + 1], group: false });
+    } else if (!emitted.has(key)) {
+      emitted.add(key);
+      items.push({ id: `mg-${key}`, entry: e, index: i, pages: idxs.map((k) => entries[k].pageIndex + 1), group: true });
+    }
+  });
+  return items;
+}

@@ -248,25 +248,32 @@ function main() {
   });
 
   // --- 17. non-zero rotation ---
-  runCase('17. non-zero rotation', () => {
+  // UPDATED (page-geometry V2 false-READY fix): rotation used to be
+  // "diagnostic only, geometry untransformed", which let a page displayed
+  // at 9x6in pass as 6x9. A rotated page now has UNAVAILABLE geometry.
+  runCase('17. non-zero rotation -> geometry unavailable (never anchored on raw boxes)', () => {
     const sz = buildZones({ pageCount: PAGE_COUNT_100 }, { trimSize: TRIM_6x9, bleed: false });
     const geo = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)), rotationDeg: 90 });
-    assert.ok(hasCode(geo.diagnostics, 'NON_ZERO_PAGE_ROTATION'));
+    assert.ok(hasCode(geo.diagnostics, 'PAGE_ROTATION_UNSUPPORTED'));
     assert.equal(geo.coordinateSystem.rotationDeg, 90);
-    // geometry itself must be untransformed/unchanged
-    assert.deepEqual(geo.trimBoxPt, { minX: 0, minY: 0, maxX: inToPt(6), maxY: inToPt(9) });
+    assert.equal(geo.geometryStatus, 'unavailable');
+    assert.equal(geo.trimBoxPt, null);
+    assert.equal(geo.safeZoneBBoxPt, null);
+    for (const deg of [180, 270, -90]) {
+      const g = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)), rotationDeg: deg });
+      assert.equal(g.geometryStatus, 'unavailable', `rotation ${deg}`);
+    }
   });
 
-  // --- 18. rotation zero ---
-  runCase('18. rotation zero', () => {
+  // --- 18. rotation zero / 360 ---
+  runCase('18. rotation zero (and 360) keeps the normal geometry', () => {
     const sz = buildZones({ pageCount: PAGE_COUNT_100 }, { trimSize: TRIM_6x9, bleed: false });
-    const rotated = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)), rotationDeg: 90 });
     const unrotated = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)), rotationDeg: 0 });
-    assert.ok(!hasCode(unrotated.diagnostics, 'NON_ZERO_PAGE_ROTATION'));
+    assert.ok(!hasCode(unrotated.diagnostics, 'PAGE_ROTATION_UNSUPPORTED'));
     assert.equal(unrotated.coordinateSystem.rotationDeg, 0);
-    // same geometry regardless of rotationDeg -- confirms diagnostic-only, no transform
-    assert.deepEqual(rotated.trimBoxPt, unrotated.trimBoxPt);
-    assert.deepEqual(rotated.safeZoneBBoxPt, unrotated.safeZoneBBoxPt);
+    assert.notEqual(unrotated.geometryStatus, 'unavailable');
+    const full = buildZoneGeometry(sz, { trimBox: pdfBox(0, 0, inToPt(6), inToPt(9)), rotationDeg: 360 });
+    assert.deepEqual(full.trimBoxPt, unrotated.trimBoxPt);
   });
 
   // --- 19-21. CHECKPOINT 5C: exact orientation -> geometryStatus 'complete' ---

@@ -14,17 +14,18 @@
 import './bufferPolyfill';
 import { configurePdfjs } from './pdfjsSetup';
 import { runPreflight, verifyAutofix } from '../../../lib/orchestrator';
-import type { InspectionResult, PreflightOptions, VerifyAutofixResult } from './types';
+import { assessPageGeometry, normalizePageGeometry } from '../../../lib/pageGeometry';
+import type { InspectionResult, NormalizationResult, PageGeometryAssessment, PreflightOptions, VerifyAutofixResult } from './types';
 
 export interface PreflightWorkerRequest {
-  type: 'runPreflight' | 'verifyAutofix';
+  type: 'runPreflight' | 'verifyAutofix' | 'assessPageGeometry' | 'normalizePageGeometry';
   requestId: number;
   pdfBytes: ArrayBuffer;
   options: PreflightOptions;
 }
 
 export type PreflightWorkerResponse =
-  | { type: 'success'; requestId: number; result: InspectionResult | VerifyAutofixResult }
+  | { type: 'success'; requestId: number; result: InspectionResult | VerifyAutofixResult | PageGeometryAssessment | NormalizationResult }
   | { type: 'error'; requestId: number; message: string };
 
 // The engine is untyped JS; src/engine/types.ts is the hand-derived
@@ -38,6 +39,14 @@ self.onmessage = async (event: MessageEvent<PreflightWorkerRequest>) => {
     if (msg.type === 'runPreflight') {
       const result = (await runPreflight(bytes, opts)) as unknown as InspectionResult;
       self.postMessage({ type: 'success', requestId: msg.requestId, result } satisfies PreflightWorkerResponse);
+    } else if (msg.type === 'assessPageGeometry') {
+      const result = (await assessPageGeometry(bytes, msg.options.userIntent)) as unknown as PageGeometryAssessment;
+      self.postMessage({ type: 'success', requestId: msg.requestId, result } satisfies PreflightWorkerResponse);
+    } else if (msg.type === 'normalizePageGeometry') {
+      const result = (await normalizePageGeometry(bytes, opts)) as unknown as NormalizationResult;
+      const out = result.outputBytes;
+      const transfer = out.buffer instanceof ArrayBuffer ? [out.buffer] : [];
+      self.postMessage({ type: 'success', requestId: msg.requestId, result } satisfies PreflightWorkerResponse, { transfer });
     } else {
       const result = (await verifyAutofix(bytes, opts)) as unknown as VerifyAutofixResult;
       // outputBytes' buffer is transferred, not copied.

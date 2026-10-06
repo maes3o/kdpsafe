@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EngineApi } from '../engine/api';
-import type { InspectionResult, UserIntent, VerifyAutofixResult } from '../engine/types';
+import type { InspectionResult, PageGeometryAssessment, SafetyCheck, UserIntent, VerifyAutofixResult } from '../engine/types';
 import { applyablePlans } from './issues';
 
-export type Busy = 'reading' | 'preflight' | 'autofix' | 'verifying' | null;
-export type FailureStage = 'read' | 'preflight' | 'autofix' | 'verify';
+export type Busy = 'reading' | 'preflight' | 'autofix' | 'verifying' | 'normalizing' | null;
+export type FailureStage = 'read' | 'preflight' | 'autofix' | 'verify' | 'normalize';
 
 export interface Failure {
   stage: FailureStage;
@@ -19,10 +19,24 @@ export interface DocInfo {
   firstPageHeightIn: number;
 }
 
+/** Record of an applied (metadata-only) page-box normalization. */
+export interface NormalizationRecord {
+  kind: 'ADD_TRIM_BOX' | 'DEFINE_TRIM_BOX_FROM_BLEED';
+  pagesChanged: number;
+  checks: SafetyCheck[];
+}
+
 export interface WorkspaceState {
   file: { name: string; size: number } | null;
-  /** The user's original bytes. Never mutated; every engine call gets a copy. */
+  /** The WORKING bytes: the user's original file, or -- after an approved
+   * page-box normalization -- the normalized copy. Never mutated in place;
+   * every engine call gets a copy. */
   bytes: Uint8Array | null;
+  /** The user's untouched original, kept only while a normalization is applied. */
+  originalBytes: Uint8Array | null;
+  /** Page-box analysis for `bytes` under `intent` (analysis only). */
+  geometry: PageGeometryAssessment | null;
+  normalization: NormalizationRecord | null;
   intent: UserIntent | null;
   busy: Busy;
   /** Engine result for the ORIGINAL bytes under `intent`. */
@@ -37,6 +51,9 @@ export interface WorkspaceState {
 const INITIAL: WorkspaceState = {
   file: null,
   bytes: null,
+  originalBytes: null,
+  geometry: null,
+  normalization: null,
   intent: null,
   busy: null,
   inspection: null,
@@ -101,38 +118,110 @@ export function useWorkspace(createEngine: () => EngineApi) {
     []
   );
 
-  /** (Re)run the real preflight with a user-confirmed intent. */
-  const runIntent = useCallback(
-    async (intent: UserIntent) => {
-      const bytes = stateRef.current.bytes;
-      if (!bytes) return;
-      const mySeq = ++seq.current;
-      // Drop any previous result immediately: a stale READY must never stay
-      // on screen while a new check runs.
-      patch({ intent, busy: 'preflight', inspection: null, fix: null, failure: null, showFixed: false });
+  /** READY with nothing to apply: ask the engine for its verification
+   * contract (VERIFIED, after:null). No mutation can occur here. */
+  const autoVerify = useCallback(
+    async (bytes: Uint8Array, intent: UserIntent, inspection: InspectionResult, mySeq: number) => {
+      if (inspection.verdict !== 'READY' || applyablePlans(inspection).length > 0) return;
+      patch({ busy: 'verifying' });
       try {
-        const inspection = await engine().runPreflight(bytes, { userIntent: intent });
+        const fix = await engine().verifyAutofix(bytes, { userIntent: intent });
         if (mySeq !== seq.current) return;
-        patch({ inspection, busy: null });
-
-        // READY with nothing to apply: ask the engine for its verification
-        // contract (VERIFIED, after:null). No mutation can occur here.
-        if (inspection.verdict === 'READY' && applyablePlans(inspection).length === 0) {
-          patch({ busy: 'verifying' });
-          try {
-            const fix = await engine().verifyAutofix(bytes, { userIntent: intent });
-            if (mySeq !== seq.current) return;
-            patch({ fix, busy: null });
-          } catch (err) {
-            if (mySeq === seq.current) patch({ busy: null, failure: { stage: 'verify', message: message(err) } });
-          }
-        }
+        patch({ fix, busy: null });
       } catch (err) {
-        if (mySeq === seq.current) patch({ busy: null, failure: { stage: 'preflight', message: message(err) } });
+        if (mySeq === seq.current) patch({ busy: null, failure: { stage: 'verify', message: message(err) } });
       }
     },
     [engine, patch]
   );
+
+  /** Page-box analysis is advisory: a failure here never blocks the verdict. */
+  const assess = useCallback(
+    async (bytes: Uint8Array, intent: UserIntent, mySeq: number) => {
+      try {
+        const geometry = await engine().assessPageGeometry(bytes, { userIntent: intent });
+        if (mySeq === seq.current) patch({ geometry });
+      } catch {
+        if (mySeq === seq.current) patch({ geometry: null });
+      }
+    },
+    [engine, patch]
+  );
+
+  /** (Re)run the real preflight with a user-confirmed intent. Always starts
+   * from the user's ORIGINAL file: a normalization depends on the intent, so
+   * changing a setting drops it and asks for approval again. */
+  const runIntent = useCallback(
+    async (intent: UserIntent) => {
+      const current = stateRef.current;
+      const bytes = current.originalBytes ?? current.bytes;
+      if (!bytes) return;
+      const mySeq = ++seq.current;
+      // Drop any previous result immediately: a stale READY must never stay
+      // on screen while a new check runs.
+      patch({
+        bytes,
+        originalBytes: null,
+        normalization: null,
+        geometry: null,
+        intent,
+        busy: 'preflight',
+        inspection: null,
+        fix: null,
+        failure: null,
+        showFixed: false,
+      });
+      try {
+        const inspection = await engine().runPreflight(bytes, { userIntent: intent });
+        if (mySeq !== seq.current) return;
+        patch({ inspection, busy: null });
+        await assess(bytes, intent, mySeq);
+        if (mySeq !== seq.current) return;
+        await autoVerify(bytes, intent, inspection, mySeq);
+      } catch (err) {
+        if (mySeq === seq.current) patch({ busy: null, failure: { stage: 'preflight', message: message(err) } });
+      }
+    },
+    [engine, patch, assess, autoVerify]
+  );
+
+  /** Explicit user approval of the page-box plan (metadata only). The
+   * engine verifies the output byte-wise and returns the REAL preflight of
+   * the changed file; that result replaces the current one. */
+  const normalizeGeometry = useCallback(async () => {
+    const { bytes, intent, geometry } = stateRef.current;
+    if (!bytes || !intent || !geometry?.plan) return;
+    const mySeq = ++seq.current;
+    patch({ busy: 'normalizing', failure: null });
+    try {
+      const res = await engine().normalizePageGeometry(bytes, { userIntent: intent });
+      if (mySeq !== seq.current) return;
+      if (!res.applied || !res.after) {
+        patch({ busy: null, failure: { stage: 'normalize', message: res.safety?.failure ?? 'NOT_APPLIED' } });
+        return;
+      }
+      patch({
+        originalBytes: bytes,
+        bytes: res.outputBytes,
+        inspection: res.after,
+        fix: null,
+        showFixed: false,
+        normalization: { kind: geometry.plan.kind, pagesChanged: geometry.plan.changes.length, checks: res.safety?.checks ?? [] },
+        busy: null,
+      });
+      await assess(res.outputBytes, intent, mySeq);
+      if (mySeq !== seq.current) return;
+      await autoVerify(res.outputBytes, intent, res.after, mySeq);
+    } catch (err) {
+      if (mySeq === seq.current) patch({ busy: null, failure: { stage: 'normalize', message: message(err) } });
+    }
+  }, [engine, patch, assess, autoVerify]);
+
+  /** Back to the user's untouched original (re-analysed from scratch). */
+  const undoNormalization = useCallback(() => {
+    const { intent } = stateRef.current;
+    if (intent) void runIntent(intent);
+  }, [runIntent]);
 
   /** Explicit user approval of the engine's autofix plans. */
   const applyFix = useCallback(async () => {
@@ -159,5 +248,5 @@ export function useWorkspace(createEngine: () => EngineApi) {
     setState(INITIAL);
   }, []);
 
-  return { state, openFile, runIntent, applyFix, discardFix, setShowFixed, setDocInfo, dismissFailure, reset };
+  return { state, openFile, runIntent, normalizeGeometry, undoNormalization, applyFix, discardFix, setShowFixed, setDocInfo, dismissFailure, reset };
 }

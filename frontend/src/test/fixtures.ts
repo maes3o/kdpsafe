@@ -4,6 +4,9 @@
  * compliance is computed here.
  */
 import type {
+  NormalizationPlan,
+  NormalizationResult,
+  PageGeometryAssessment,
   AutofixPlan,
   BBoxPt,
   GeometryPage,
@@ -32,7 +35,7 @@ export function inspection(overrides: Partial<InspectionResult> & { verdict: Ver
   const violations = overrides.violations ?? [];
   const manualReview = overrides.categories?.margins.manualReview ?? [];
   return {
-    document: { pageCount: 30, trimWidthIn: 6, trimHeightIn: 9, pageSizeConsistent: true },
+    document: { pageCount: 30, pageWidthIn: 6, pageHeightIn: 9, pageSizeConsistent: true },
     geometry: { status: 'complete', confidence: 'high', pages: [geometryPage(0)] },
     categories: {
       margins: {
@@ -127,6 +130,87 @@ export function verifyResult(over: Partial<VerifyAutofixResult> & Pick<VerifyAut
     skipped: [],
     verification: 'VERIFIED',
     reasons: [],
+    ...over,
+  };
+}
+
+// ---- page-geometry assessments (what lib/pageGeometry.js returns) ----
+
+const pageRect = { x: 0, y: 0, width: 432, height: 648 };
+
+export function assessment(over: Partial<PageGeometryAssessment> = {}): PageGeometryAssessment {
+  return {
+    selectedTrim: { widthIn: 6, heightIn: 9 },
+    bleed: false,
+    readingDirection: null,
+    pageCount: 30,
+    encrypted: false,
+    signed: false,
+    pages: [],
+    category: 'EXACT_TRIM_PRESENT',
+    tier: 0,
+    reasons: [],
+    pageSize: { widthIn: 6, heightIn: 9 },
+    trimBox: 'explicit',
+    plan: null,
+    ...over,
+  };
+}
+
+export const addTrimBoxPlan: NormalizationPlan = {
+  kind: 'ADD_TRIM_BOX',
+  tier: 1,
+  changes: Array.from({ length: 30 }, (_, pageIndex) => ({
+    pageIndex,
+    before: { trimBox: null, bleedBox: null },
+    set: { trimBox: { ...pageRect } },
+  })),
+  guarantees: { contentStreamsUnchanged: true, scales: false, crops: false, moves: false, rotates: false },
+};
+
+export const TIER1 = assessment({ category: 'EXACT_PAGE_NO_TRIM', tier: 1, trimBox: 'missing', plan: addTrimBoxPlan });
+export const TIER4 = assessment({
+  category: 'DIFFERENT_SIZE',
+  tier: 4,
+  trimBox: 'missing',
+  reasons: ['SIZE_DIFFERENT'],
+  pageSize: { widthIn: 8.2677, heightIn: 11.6929 },
+});
+export const TIER5_SIGNED = assessment({ category: 'DO_NOT_TOUCH', tier: 5, trimBox: 'missing', signed: true, reasons: ['SIGNED'] });
+
+/** 30 identical per-page entries, exactly like the engine reports without a TrimBox. */
+export const UNRESOLVED_30 = inspection({
+  verdict: 'MANUAL_REVIEW_REQUIRED',
+  categories: {
+    margins: {
+      status: 'manual_review',
+      violations: [],
+      manualReview: Array.from({ length: 30 }, (_, pageIndex) => ({
+        pageIndex,
+        reason: 'HORIZONTAL_GEOMETRY_UNRESOLVED' as const,
+        sides: ['top', 'bottom', 'left', 'right'] as ('top' | 'bottom' | 'left' | 'right')[],
+        maxAmountPt: null,
+      })),
+      diagnostics: [],
+    },
+  },
+});
+
+export function normalizationResult(over: Partial<NormalizationResult> & Pick<NormalizationResult, 'after'>): NormalizationResult {
+  return {
+    applied: true,
+    assessment: assessment({ category: 'EXACT_TRIM_PRESENT', tier: 0, trimBox: 'explicit' }),
+    outputBytes: new Uint8Array([9, 9, 9, 9, 9]),
+    safety: {
+      ok: true,
+      checks: [
+        { id: 'PAGE_COUNT_UNCHANGED', ok: true },
+        { id: 'CONTENT_STREAMS_BYTE_IDENTICAL', ok: true },
+        { id: 'BOXES_MATCH_PLAN', ok: true },
+      ],
+      failure: null,
+    },
+    before: null,
     ...over,
   };
 }
