@@ -22,8 +22,41 @@
  * for whichever future checkpoint builds the autofix-apply flow.
  */
 
+import legacyPdfWorkerUrl from '../../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import { runPreflight } from '../../../lib/orchestrator';
 import type { InspectionResult, PreflightOptions } from './types';
+
+// GlobalWorkerOptions.workerSrc for the LEGACY pdfjs-dist build: lib/
+// margin.js lazily imports 'pdfjs-dist/legacy/build/pdf.mjs' (a
+// DIFFERENT entry point than PdfViewer.tsx's own main-thread 'pdfjs-dist'
+// import, which is rendering-only), and pdfjs ALWAYS requires an
+// explicit workerSrc/workerPort in a real browser -- confirmed (by
+// reading pdfjs's own bundled isNodeJS check) that there is no
+// "running inside a worker already, so just inline it" fallback; pdfjs
+// throws 'No "GlobalWorkerOptions.workerSrc" specified.' without one,
+// which already affects the plain read-only preflight flow too, in a
+// real browser, independent of anything Smart Fix adds (PdfViewer.tsx's
+// own workerSrc never covered this second pdfjs instance). This is a
+// fix to that pre-existing gap, not a behavior change: pdfjs's
+// worker-thread vs. main-thread execution mode produces identical
+// parsing results; nothing about margin/compliance logic is touched.
+//
+// Resolved by an EXPLICIT RELATIVE PATH into the repo root's own
+// node_modules, not the bare 'pdfjs-dist' specifier: this is a
+// multi-package repo with TWO separate pdfjs-dist installations
+// (frontend/node_modules/pdfjs-dist, used by a bare specifier from this
+// file, and the root node_modules/pdfjs-dist lib/margin.js actually
+// resolves its own bare 'pdfjs-dist' specifier to, since margin.js lives
+// at the repo root). Those are two different files on disk, so two
+// independent module instances with two independent GlobalWorkerOptions
+// singletons even when forced into one output chunk -- setting workerSrc
+// via the bare specifier therefore never affected the copy margin.js
+// actually reads. Importing the SAME relative file margin.js resolves
+// to is what makes this assignment visible to it.
+const legacyPdfjsWorkerSrcReady = (async () => {
+  const legacyPdfjsLib = await import('../../../node_modules/pdfjs-dist/legacy/build/pdf.mjs');
+  legacyPdfjsLib.GlobalWorkerOptions.workerSrc = legacyPdfWorkerUrl;
+})();
 
 export interface PreflightRequest {
   type: 'runPreflight';
@@ -53,6 +86,7 @@ self.onmessage = async (event: MessageEvent<PreflightWorkerRequest>) => {
 
   if (msg.type === 'runPreflight') {
     try {
+      await legacyPdfjsWorkerSrcReady;
       // The engine is plain untyped JS (allowJs, no .d.ts) -- TS infers a
       // structural shape from the actual code that's close but not
       // identical to our hand-derived InspectionResult (e.g. literal

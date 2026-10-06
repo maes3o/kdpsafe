@@ -1,11 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { PreflightClient } from './engine/client';
-import type { InspectionResult } from './engine/types';
+import type { InspectionResult, UserIntent } from './engine/types';
 import { useI18n } from './i18n/context';
 import { useTheme } from './theme/context';
 import { UploadDropzone } from './components/UploadDropzone';
 import { VerdictBanner } from './components/VerdictBanner';
 import { PdfViewer } from './components/PdfViewer';
+import { SmartFixPanel } from './components/SmartFixPanel';
 import type { Locale } from './i18n/strings';
 
 type AppState =
@@ -13,6 +14,13 @@ type AppState =
   | { phase: 'processing' }
   | { phase: 'result'; result: InspectionResult }
   | { phase: 'error'; message: string };
+
+// FRONTEND-01 shell default: no bleed, no reading-direction decided yet.
+// A real trim-size picker and the LEM_ORIENTATION_AMBIGUOUS ->
+// readingDirection prompt are future UI work, not invented here. Shared
+// by both the read-only preflight call and Smart Fix so the two always
+// agree on what "the required size" means.
+const DEFAULT_USER_INTENT: UserIntent = { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false };
 
 /**
  * Single Document Workspace shell (FRONTEND-01 scope). This is the minimal
@@ -45,13 +53,7 @@ function App() {
       // Keep our own copy for the viewer -- the worker call below
       // transfers (detaches) the ArrayBuffer it's given.
       setPdfBytes(new Uint8Array(buf.slice(0)));
-      const result = await getClient().runPreflight(buf, {
-        // FRONTEND-01 shell default: no bleed, no reading-direction
-        // decided yet. A real trim-size picker and the
-        // LEM_ORIENTATION_AMBIGUOUS -> readingDirection prompt are future
-        // UI work, not invented here.
-        userIntent: { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false },
-      });
+      const result = await getClient().runPreflight(buf, { userIntent: DEFAULT_USER_INTENT });
       setState({ phase: 'result', result });
     } catch (err) {
       setState({ phase: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -84,7 +86,7 @@ function App() {
 
       <div className="flex min-h-0 flex-1">
         <aside className="w-[400px] shrink-0 overflow-y-auto border-r border-border bg-bg-panel p-4">
-          <ResultPanel state={state} onFile={handleFile} />
+          <ResultPanel state={state} onFile={handleFile} pdfBytes={pdfBytes} />
         </aside>
         <main className="flex-1 overflow-auto p-6">
           <PdfViewer pdfBytes={pdfBytes} />
@@ -94,7 +96,15 @@ function App() {
   );
 }
 
-function ResultPanel({ state, onFile }: { state: AppState; onFile: (file: File) => void }) {
+function ResultPanel({
+  state,
+  onFile,
+  pdfBytes,
+}: {
+  state: AppState;
+  onFile: (file: File) => void;
+  pdfBytes: Uint8Array | null;
+}) {
   const { t } = useI18n();
 
   if (state.phase === 'empty') {
@@ -163,6 +173,8 @@ function ResultPanel({ state, onFile }: { state: AppState; onFile: (file: File) 
           </ul>
         )}
       </section>
+
+      <SmartFixPanel pdfBytes={pdfBytes} userIntent={DEFAULT_USER_INTENT} />
     </div>
   );
 }

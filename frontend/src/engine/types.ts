@@ -290,3 +290,142 @@ export interface PreflightOptions {
   userIntent: UserIntent;
   pageContext?: PageContext;
 }
+
+// ---------------------------------------------------------------------
+// Smart Fix (lib/smartfix/*.js) -- hand-derived the same way as the rest
+// of this file: these mirror the REAL return shapes of planRepair()/
+// applyRepair() (lib/smartfix/smartFixEngine.js), buildPreview()
+// (lib/smartfix/repairPreview.js), checkHardGate() (lib/smartfix/
+// hardGate.js) and geometryProblems.js/repairPlanner.js. Do not duplicate
+// KDP policy or Smart Fix's safety/risk classification logic anywhere on
+// the frontend -- these types exist so the UI can DISPLAY what Smart Fix
+// already decided, never re-decide it.
+// ---------------------------------------------------------------------
+
+export type SmartFixDocumentStatus = 'DO_NOT_TOUCH' | 'ANALYZED' | 'APPLIED';
+
+export interface SmartFixHardGateResult {
+  blocked: boolean;
+  /** e.g. 'ENCRYPTED', 'DIGITALLY_SIGNED', 'DOCUMENT_UNREADABLE: ...' */
+  reasons: string[];
+}
+
+/** geometryProblems.js's PageGeometryProblem. */
+export type SmartFixProblemKind =
+  | 'NON_ZERO_ROTATION'
+  | 'NON_ZERO_ORIGIN'
+  | 'BOX_CONFLICT'
+  | 'MISSING_TRIM_BOX'
+  | 'TOO_SMALL'
+  | 'TOO_LARGE'
+  | 'WRONG_ASPECT';
+
+export interface SmartFixProblem {
+  pageIndex: number;
+  kind: SmartFixProblemKind;
+  /** Plain-sentence (Ukrainian) detail from the engine -- not displayed
+   * verbatim by the UI (too jargon-heavy); used only as a fallback / for
+   * developer-facing surfaces. The UI builds its own plain-language copy
+   * from `kind` + `measured` + `expected` instead. */
+  detail: string;
+  measured: { widthIn: number; heightIn: number };
+  expected: { widthIn: number | null; heightIn: number | null };
+}
+
+export type SmartFixRiskLevel = 'SAFE_AUTOFIX' | 'USER_CONFIRMATION' | 'MANUAL_REVIEW';
+
+export interface SmartFixRisk {
+  level: SmartFixRiskLevel;
+  reasons: string[];
+}
+
+export type SmartFixStrategyType = 'BOX_NORMALIZATION' | 'PADDING' | 'PROPORTIONAL_SCALE' | 'SCALE_PLUS_PADDING';
+
+export interface SmartFixStrategy {
+  type: SmartFixStrategyType;
+  /** Strategy-specific numeric params (targetWidthPt, scaleFactor, dx,
+   * dy, padWidthTotalPt, ...). Never pattern-matched by the UI beyond
+   * what repairPreview.js already surfaces via SmartFixPreviewEntry --
+   * the UI reads targetWidthPt/targetHeightPt only to render inches. */
+  params: Record<string, unknown>;
+  risk: SmartFixRisk;
+  /** Plain-language (Ukrainian) sentences the engine itself already wrote
+   * -- e.g. "Жоден існуючий піксель чи вектор не видаляється, не
+   * обрізається і не масштабується." Surfaced to the user verbatim as
+   * the "what this guarantees" list; never rewritten or re-derived. */
+  guarantees: string[];
+  preconditions: string[];
+  contentPreserving: boolean;
+}
+
+export interface SmartFixRepairPlan {
+  pageIndex: number;
+  problem: SmartFixProblem | null;
+  chosenStrategy: SmartFixStrategy | null;
+  alternativeStrategies: SmartFixStrategy[];
+  /** Plain-sentence (Ukrainian) explanation from the engine -- same
+   * caveat as SmartFixProblem.detail: a developer-facing fallback, not
+   * what the UI renders as its primary copy. */
+  explanation: string;
+}
+
+export interface SmartFixDocumentSummary {
+  pageCount: number;
+  pageSizeConsistent: boolean;
+}
+
+/** repairPreview.js's buildPreview() entry -- the Before/After data the
+ * UI shows ahead of any Apply action. riskLevel here also includes
+ * 'NONE' for a page with no problem and nothing to propose. */
+export interface SmartFixPreviewEntry {
+  pageIndex: number;
+  before: { widthIn: number; heightIn: number; problem: SmartFixProblemKind | null };
+  after: { widthIn: number; heightIn: number } | null;
+  strategyType: SmartFixStrategyType | null;
+  riskLevel: SmartFixRiskLevel | 'NONE';
+  guarantees: string[];
+  explanation: string;
+}
+
+export interface SmartFixPlanResult {
+  documentStatus: 'DO_NOT_TOUCH' | 'ANALYZED';
+  hardGate: SmartFixHardGateResult;
+  document?: SmartFixDocumentSummary;
+  plans: SmartFixRepairPlan[];
+  preview?: SmartFixPreviewEntry[];
+  explanation: string;
+}
+
+export interface SmartFixSkippedPage {
+  pageIndex: number;
+  /** 'MANUAL_REVIEW' | `NOT_CONFIRMED_${SmartFixRiskLevel}` */
+  reason: string;
+}
+
+export interface SmartFixInvariants {
+  pageCountPreserved: boolean;
+  annotationCountPreserved: boolean;
+}
+
+export interface SmartFixApplyResult {
+  documentStatus: SmartFixDocumentStatus;
+  before: InspectionResult | null;
+  after: InspectionResult | null;
+  outputBytes: Uint8Array;
+  appliedPageIndexes: number[];
+  skipped: SmartFixSkippedPage[];
+  invariants: SmartFixInvariants | null;
+  /** The single authoritative gate: only true means re-preflight found
+   * zero violations/manual-review on every page Smart Fix touched. The
+   * UI must never show a VERIFIED state or a Download button unless this
+   * is exactly `true`. */
+  verified: boolean;
+  reasons: string[];
+  notes?: string[];
+}
+
+export type SmartFixProgressStage = 'APPLYING' | 'CHECKING';
+
+export interface SmartFixApplyOptions {
+  confirmedPageIndexes?: number[];
+}
