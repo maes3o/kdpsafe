@@ -180,6 +180,17 @@ export function actualTrimSizePt(geometry: PageGeometryAssessment): { widthPt: n
   return sizes.size === 1 ? [...sizes.values()][0] : 'varies';
 }
 
+// ---- Phase 2A integrity findings: counts only (the engine decides everything) ----
+
+/** Number of blocking / manual-review integrity findings in a result. */
+export function integrityCounts(result: InspectionResult): { blocking: number; manual: number } {
+  const checks = result.integrity?.checks ?? [];
+  return {
+    blocking: checks.filter((c) => c.impact === 'BLOCKING').length,
+    manual: checks.filter((c) => c.impact === 'MANUAL_REVIEW').length,
+  };
+}
+
 // ---- page count vs the inside-margin (gutter) table ----
 
 /** Page range covered by the KDP inside-margin table the engine uses

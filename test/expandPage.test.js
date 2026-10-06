@@ -14,6 +14,8 @@
  */
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const zlib = require('node:zlib');
 const {
   PDFDocument,
   PDFName,
@@ -31,7 +33,41 @@ const { assessPageGeometry, assessExpandPage, applyExpandPage, normalizePageGeom
 const { runPreflight } = require('../lib/orchestrator');
 
 const U = { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false };
-const PNG_1X1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+const fontkit = require('@pdf-lib/fontkit');
+
+// Phase 2A: a fixture that is meant to reach READY must be a clean submission file too:
+// an embedded font, no annotations (a Link is a manual-review finding), and images at
+// a sensible resolution (a 200x200 px image drawn at 20 pt is 720 dpi).
+const FONT_PATH = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
+function makePng(w, h) {
+  const table = Array.from({ length: 256 }, (_, i) => {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf) => {
+    let c = 0xffffffff;
+    for (const b of buf) c = table[(c ^ b) & 255] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(w * 3, 128)]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return new Uint8Array(Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]));
+}
+const PNG = makePng(200, 200);
 const rectOps = (x, y, w, h) => [pushGraphicsState(), setFillingRgbColor(0.2, 0.2, 0.2), rectangle(x, y, w, h), fill(), popGraphicsState()];
 const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 
@@ -40,8 +76,9 @@ const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
  * a PNG (XObject stream), a Link annotation, Info metadata.
  * The page is [ox, oy, w, h]; content is positioned relative to that origin.
  */
-async function make({ w = 396, h = 612, pages = 30, inset = 60, origin = [0, 0], setup, link = true, meta = true } = {}) {
+async function make({ w = 396, h = 612, pages = 30, inset = 60, origin = [0, 0], setup, link = false, meta = true } = {}) {
   const doc = await PDFDocument.create({ updateMetadata: false });
+  doc.registerFontkit(fontkit);
   if (meta) {
     doc.setTitle('Synthetic Book');
     doc.setAuthor('Author Name');
@@ -50,8 +87,8 @@ async function make({ w = 396, h = 612, pages = 30, inset = 60, origin = [0, 0],
     doc.setCreator('creator');
     doc.setProducer('producer');
   }
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const png = await doc.embedPng(PNG_1X1);
+  const font = await doc.embedFont(fs.readFileSync(FONT_PATH), { subset: true });
+  const png = await doc.embedPng(PNG);
   const [ox, oy] = origin;
   for (let i = 0; i < pages; i++) {
     const p = doc.addPage([w, h]);
@@ -93,7 +130,8 @@ async function runCase(label, fn) {
 }
 
 async function main() {
-  const small = await make(); // 5.5 x 8.5 in, content inset 60
+  const small = await make(); // 5.5 x 8.5 in, content inset 60: a clean file (embedded font, no annotations)
+  const smallLinked = await make({ link: true }); // same, plus a Link annotation per page (annotation invariants; never READY on its own)
 
   // ===== assess: eligibility + preview, no side effects =====
   await runCase('assessExpandPage: 5.5x8.5 -> 6x9 is eligible; production preview shows keep-origin only', async () => {
@@ -377,6 +415,18 @@ async function main() {
     assert.equal(c.after.verdict, 'READY');
   });
 
+  await runCase('Phase 2A interplay: the AFTER verdict is the unified one -- a Link annotation (manual-review finding) keeps Expand from being adopted, though every Expand invariant passes', async () => {
+    const copy = new Uint8Array(smallLinked);
+    const direct = await applyExpandPage(smallLinked, U, 'keep-origin');
+    assert.equal(direct.ok, true, 'the page-box operation itself is verified');
+    const res = await expand(smallLinked, 'keep-origin');
+    assert.equal(res.applied, false);
+    assert.equal(res.safety.failure, 'AFTER_NOT_READY');
+    assert.equal(res.after.geometryVerdict, 'READY', 'the geometry of the expanded page is fine');
+    assert.equal(res.after.verdict, 'MANUAL_REVIEW_REQUIRED');
+    assert.ok(same(res.outputBytes, copy), 'original bytes returned');
+  });
+
   await runCase('the AFTER verdict is exactly runPreflight(outputBytes): nothing is decided in pageGeometry', async () => {
     const res = await expand(small, 'keep-origin');
     const direct = await runPreflight(res.outputBytes, { userIntent: U });
@@ -422,11 +472,11 @@ async function main() {
   await expectDetected('page content translated', 'CONTENT_STREAMS_CHANGED', { mutate: (p) => p.translateContent(5, 5) });
   await expectDetected('page content scaled', 'CONTENT_STREAMS_CHANGED', { mutate: (p) => p.scaleContent(0.9, 0.9) });
   await expectDetected('content operators appended', 'CONTENT_STREAMS_CHANGED', { mutate: (p) => p.pushOperators(...rectOps(0, 0, 5, 5)) });
-  await expectDetected('annotation moved', 'ANNOTATIONS_CHANGED', {
+  await expectDetected('annotation moved', 'ANNOTATIONS_CHANGED', { bytes: smallLinked,
     mutate: (p) => p.node.Annots().lookup(0).set(PN('Rect'), p.doc.context.obj([0, 0, 10, 10])),
   });
-  await expectDetected('annotation dropped', 'ANNOTATIONS_CHANGED', { mutate: (p) => p.node.delete(PN('Annots')) });
-  await expectDetected('annotation action changed', 'ANNOTATIONS_CHANGED', {
+  await expectDetected('annotation dropped', 'ANNOTATIONS_CHANGED', { bytes: smallLinked, mutate: (p) => p.node.delete(PN('Annots')) });
+  await expectDetected('annotation action changed', 'ANNOTATIONS_CHANGED', { bytes: smallLinked,
     mutate: (p) => p.node.Annots().lookup(0).set(PN('Border'), p.doc.context.obj([1, 1, 1])),
   });
   await expectDetected('resources changed (ExtGState added)', 'RESOURCES_CHANGED', {

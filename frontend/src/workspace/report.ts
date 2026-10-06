@@ -16,13 +16,22 @@ export function buildReport(args: {
   normalization?: NormalizationRecord | null;
 }) {
   const { fileName, intent, inspection, fix, geometry = null, normalization = null } = args;
+  const checks = inspection.integrity?.checks ?? [];
   return {
     tool: 'KDPSafe',
-    scope: 'Phase 1: margins and bleed only',
+    scope: 'Margins and bleed (Phase 1) plus read-only PDF integrity checks (Phase 2A); colour and transparency are not checked',
     generatedAt: new Date().toISOString(),
     file: fileName,
     userIntent: intent,
     inspection,
+    // Phase 2A, grouped by what each finding means. Manual-review findings are NOT failures:
+    // KDPSafe could not decide them from the PDF alone.
+    phase2a: {
+      deterministicBlockers: checks.filter((c) => c.impact === 'BLOCKING'),
+      manualReview: checks.filter((c) => c.impact === 'MANUAL_REVIEW'),
+      informational: checks.filter((c) => c.impact === 'NONE'),
+      note: 'Findings are exactly what the engine returned. Manual-review findings are not failures.',
+    },
     pageGeometry: { assessment: geometry, normalization },
     autofix: fix
       ? {

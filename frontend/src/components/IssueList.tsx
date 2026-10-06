@@ -25,6 +25,8 @@ interface Props {
   afterFix: boolean;
   activeId: string | null;
   onFocus: FocusIssue;
+  /** Phase 2A findings are listed next to this list, so "No issues found" would contradict them. */
+  suppressEmpty?: boolean;
 }
 
 function PageGroup({ page, count, defaultOpen, children }: { page: number; count: number; defaultOpen: boolean; children: React.ReactNode }) {
@@ -137,7 +139,7 @@ function ManualRow({
 
 /** Confirmed problems and manual-review items, grouped by page. Clicking a
  * row sends the viewer to that page (and bbox when the engine gave one). */
-export function IssueList({ inspection, geometry, afterFix, activeId, onFocus }: Props) {
+export function IssueList({ inspection, geometry, afterFix, activeId, onFocus, suppressEmpty = false }: Props) {
   const { t } = useI18n();
   const outside = outsideTrimGroup(inspection, geometry);
   const grouped = new Set(outside?.indices ?? []);
@@ -153,7 +155,7 @@ export function IssueList({ inspection, geometry, afterFix, activeId, onFocus }:
   const total = confirmedCount + manualTotal;
   const openAll = total <= 15;
 
-  if (total === 0) return <p className="text-sm text-ink-muted">{t('noIssues')}</p>;
+  if (total === 0) return suppressEmpty ? null : <p className="text-sm text-ink-muted">{t('noIssues')}</p>;
 
   return (
     <section aria-labelledby="issues-title" className="space-y-4" data-testid="issue-list">

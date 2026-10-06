@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { makeEngine, openDetails, renderApp, uploadAndRun, pdfFile } from './test/harness';
-import { AMBIGUOUS, EXPANDABLE, MANUAL, bbox, expandApplied, expandOffer, NEEDS_ATTENTION, READY, TIER1, TIER4, TIER5_SIGNED, UNRESOLVED_30, WITH_PLAN, assessment, inspection, normalizationResult, verifyResult, violation } from './test/fixtures';
+import { AMBIGUOUS, EXPANDABLE, MANUAL, bbox, finding, integrityOf, expandApplied, expandOffer, NEEDS_ATTENTION, READY, TIER1, TIER4, TIER5_SIGNED, UNRESOLVED_30, WITH_PLAN, assessment, inspection, normalizationResult, verifyResult, violation } from './test/fixtures';
 
 vi.mock('./components/viewer/PdfViewer', async () => await import('./test/viewerMock'));
 
@@ -203,7 +203,7 @@ describe('verdict hierarchy + mobile navigation', () => {
     await uploadAndRun(user, screen);
     await screen.findByTestId('verdict-card');
     expect(screen.getByTestId('verdict-headline')).toHaveTextContent('No problems found.');
-    expect(verdict()).toHaveTextContent('Checked: margins and bleed.');
+    expect(verdict()).toHaveTextContent('Checked: margins, bleed and the PDF checks below.');
   });
 
   it('uses correct Ukrainian plural forms next to the number', async () => {
@@ -1050,5 +1050,169 @@ describe('Phase 1 audit fixes', () => {
       expect(verdict()).toHaveAttribute('aria-label', 'Результат перевірки');
       expect(document.body.innerHTML).not.toMatch(/безпечний цей PDF для KDP/i);
     });
+  });
+});
+
+describe('Phase 2A: PDF integrity findings', () => {
+  const withFindings = (verdictName: 'NEEDS_ATTENTION' | 'MANUAL_REVIEW_REQUIRED' | 'READY', geometry: 'NEEDS_ATTENTION' | 'MANUAL_REVIEW_REQUIRED' | 'READY', over: Parameters<typeof integrityOf>[0]) =>
+    inspection({ verdict: verdictName, geometryVerdict: geometry, integrity: integrityOf(over) });
+  const open = async (res: ReturnType<typeof inspection>, locale: 'en' | 'uk' = 'en') => {
+    const { user } = renderApp(makeEngine({ preflight: () => res, assess: () => assessment(), verify: () => verifyResult({ before: res }) }), locale);
+    if (locale === 'en') await uploadAndRun(user, screen);
+    else {
+      await user.upload(screen.getByTestId('file-input'), pdfFile());
+      await user.type(await screen.findByLabelText(/Ширина/), '6');
+      await user.type(screen.getByLabelText(/Висота/), '9');
+      await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
+      await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
+    }
+    await screen.findByTestId('verdict-card');
+    return user;
+  };
+  const section = () => screen.getByTestId('integrity-section');
+  const row = (id: string) => within(section()).getAllByTestId('integrity-finding').find((el) => el.getAttribute('data-check-id') === id)!;
+
+  it('a deterministic blocker is shown with icon + text status, title, explanation and the engine verdict (NEEDS_ATTENTION, geometry READY)', async () => {
+    const res = withFindings('NEEDS_ATTENTION', 'READY', { BOOKMARKS: finding('BOOKMARKS', 'FAIL', 'BOOKMARKS_PRESENT', { details: { items: 3 } }) });
+    await open(res);
+    expect(verdict()).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION');
+    expect(screen.getByTestId('verdict-headline')).toHaveTextContent('1');
+    const r = row('BOOKMARKS');
+    expect(r).toHaveAttribute('data-status', 'FAIL');
+    expect(r).toHaveTextContent('Needs attention'); // status is TEXT, not only colour
+    expect(r).toHaveTextContent('×');
+    expect(r).toHaveTextContent('Bookmarks');
+    expect(r).toHaveTextContent(/KDP lists bookmarks among the elements a submitted file should not contain\. Bookmarks detected: 3/);
+    expect(screen.queryByText('No issues found.')).not.toBeInTheDocument(); // would contradict the finding
+  });
+
+  it('manual-review findings explain WHY KDPSafe cannot decide, and are not called failures', async () => {
+    const res = withFindings('MANUAL_REVIEW_REQUIRED', 'READY', {
+      DIGITAL_SIGNATURES: finding('DIGITAL_SIGNATURES', 'WARNING', 'SIGNATURE_DETECTED'),
+      FORMS_WIDGETS: finding('FORMS_WIDGETS', 'WARNING', 'FORMS_DETECTED'),
+      LINK_ANNOTATIONS: finding('LINK_ANNOTATIONS', 'WARNING', 'LINKS_DETECTED', { details: { links: 2 }, evidence: { links: 2 }, pages: [2, 3] }),
+    });
+    await open(res);
+    expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+    expect(screen.getByTestId('verdict-headline')).toHaveTextContent('3');
+    for (const id of ['DIGITAL_SIGNATURES', 'FORMS_WIDGETS', 'LINK_ANNOTATIONS']) {
+      expect(row(id)).toHaveTextContent('Manual review required');
+      expect(row(id)).toHaveTextContent('?');
+      expect(row(id)).not.toHaveTextContent(/Needs attention/);
+    }
+    expect(row('DIGITAL_SIGNATURES')).toHaveTextContent(/position on signed PDFs is not documented, so KDPSafe cannot decide/);
+    expect(row('DIGITAL_SIGNATURES')).toHaveTextContent(/does not remove signatures/);
+    expect(row('FORMS_WIDGETS')).toHaveTextContent(/cannot be determined from the PDF/);
+    expect(row('LINK_ANNOTATIONS')).toHaveTextContent('Pages: 2–3');
+    expect(row('LINK_ANNOTATIONS')).toHaveTextContent(/policy on links is not explicit/);
+  });
+
+  it('UNKNOWN is shown as "could not be determined" (manual), never as passed; diagnostics live in the technical details', async () => {
+    const res = withFindings('MANUAL_REVIEW_REQUIRED', 'READY', {
+      FONTS_EMBEDDED: finding('FONTS_EMBEDDED', 'UNKNOWN', 'CHECK_FAILED', { diagnostics: [{ code: 'CHECK_FAILED', message: 'font parser exploded' }] }),
+    });
+    await open(res);
+    const r = row('FONTS_EMBEDDED');
+    expect(r).toHaveAttribute('data-status', 'UNKNOWN');
+    expect(r).toHaveTextContent('Could not be determined');
+    expect(r).toHaveTextContent(/cannot be passed/);
+    expect(r).not.toHaveTextContent('Passed');
+    expect(r.textContent).toContain('font parser exploded');
+  });
+
+  it('passed checks are listed separately and collapsed; they never hide a finding', async () => {
+    const res = withFindings('NEEDS_ATTENTION', 'READY', { FONTS_EMBEDDED: finding('FONTS_EMBEDDED', 'FAIL', 'NOT_EMBEDDED', { objects: ['Helvetica'], pages: [1, 2] }) });
+    await open(res);
+    expect(within(section()).getByTestId('integrity-passed')).toHaveTextContent('Passed checks (10)');
+    const f = row('FONTS_EMBEDDED');
+    expect(f).toHaveTextContent('Fonts that are not embedded: Helvetica');
+    expect(f).toHaveTextContent(/does not embed or replace fonts/);
+    expect(f).toHaveTextContent('Pages: 1–2');
+    expect(within(section()).getAllByTestId('integrity-finding').filter((e) => e.getAttribute('data-status') === 'FAIL')).toHaveLength(1);
+  });
+
+  it('blockers and manual findings together: verdict from the engine, blocker count in the headline, manual count stated', async () => {
+    const res = withFindings('NEEDS_ATTENTION', 'MANUAL_REVIEW_REQUIRED', {
+      ANNOTATIONS_COMMENTS: finding('ANNOTATIONS_COMMENTS', 'FAIL', 'COMMENTS_PRESENT', { details: { comments: 4 } }),
+      LINK_ANNOTATIONS: finding('LINK_ANNOTATIONS', 'WARNING', 'LINKS_DETECTED'),
+    });
+    await open(res);
+    expect(verdict()).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION');
+    expect(screen.getByTestId('verdict-headline')).toHaveTextContent('1');
+    expect(verdict()).toHaveTextContent('Also needs manual review: 1');
+    expect(row('ANNOTATIONS_COMMENTS')).toHaveTextContent(/annotations and comments among the elements a submitted file should not contain/);
+  });
+
+  it('READY: the engine says READY with all checks passed -> READY card, no findings, passed list available', async () => {
+    await open(inspection({ verdict: 'READY' }));
+    expect(verdict()).toHaveAttribute('data-verdict', 'READY');
+    expect(within(section()).queryByText('Needs attention')).not.toBeInTheDocument();
+    expect(within(section()).getByTestId('integrity-passed')).toHaveTextContent('Passed checks (11)');
+  });
+
+  it('the UI never turns findings into READY: an engine verdict is displayed as given even if every geometry item is clean', async () => {
+    await open(withFindings('MANUAL_REVIEW_REQUIRED', 'READY', { IMAGE_DPI: finding('IMAGE_DPI', 'WARNING', 'LOW_EFFECTIVE_DPI', { evidence: { belowReference: 2, minEffectiveDpi: 100 } }) }));
+    expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+    expect(row('IMAGE_DPI')).toHaveTextContent(/lowest effective resolution about 100 dpi/);
+    expect(row('IMAGE_DPI')).toHaveTextContent(/does not modify images/);
+    expect(screen.queryByRole('button', { name: 'Download verified PDF' })).not.toBeInTheDocument();
+  });
+
+  it('is available in Ukrainian (status text, titles, explanations, counts)', async () => {
+    const res = withFindings('NEEDS_ATTENTION', 'READY', {
+      SECURITY_ENCRYPTION: finding('SECURITY_ENCRYPTION', 'FAIL', 'ENCRYPTED'),
+      DIGITAL_SIGNATURES: finding('DIGITAL_SIGNATURES', 'WARNING', 'SIGNATURE_DETECTED'),
+    });
+    await open(res, 'uk');
+    expect(row('SECURITY_ENCRYPTION')).toHaveTextContent('Потребує уваги');
+    expect(row('SECURITY_ENCRYPTION')).toHaveTextContent('Захист / шифрування');
+    expect(row('SECURITY_ENCRYPTION')).toHaveTextContent(/Вимога KDP: файл рукопису не має бути зашифрованим/);
+    expect(row('DIGITAL_SIGNATURES')).toHaveTextContent('Потрібна ручна перевірка');
+    expect(verdict()).toHaveTextContent('Також потребує ручної перевірки: 1');
+  });
+
+  it('wording rules: nothing promises KDP acceptance or rejection; every check has EN + UA text', async () => {
+    const { STRINGS } = await import('./i18n/strings');
+    const forbidden = [/KDP will reject/i, /KDP[- ]safe/i, /guaranteed/i, /will be accepted/i, /KDP rejects/i, /Amazon will/i, /безпечн\w* для KDP/i, /KDP відхил/i, /гарантован/i];
+    for (const locale of ['en', 'uk'] as const) {
+      for (const [key, value] of Object.entries(STRINGS[locale])) {
+        if (!key.startsWith('integrity') && key !== 'verdictReadyScope' && key !== 'scopeNote') continue;
+        for (const re of forbidden) expect(value, `${locale}.${key}`).not.toMatch(re);
+      }
+    }
+    const ids = ['SECURITY_ENCRYPTION', 'BOOKMARKS', 'ANNOTATIONS_COMMENTS', 'FILE_SIZE', 'FONTS_EMBEDDED', 'DIGITAL_SIGNATURES', 'FORMS_WIDGETS', 'LINK_ANNOTATIONS', 'IMAGE_DPI', 'SPREADS', 'ORIENTATION'];
+    for (const id of ids) {
+      expect(STRINGS.en).toHaveProperty(`integrity_${id}`);
+      expect(STRINGS.uk).toHaveProperty(`integrity_${id}`);
+    }
+  });
+
+  it('the READY scope line and the scope note say what is (and is not) checked', async () => {
+    const { STRINGS } = await import('./i18n/strings');
+    expect(STRINGS.en.verdictReadyScope).toMatch(/margins, bleed and the PDF checks/);
+    expect(STRINGS.en.scopeNote).toMatch(/Colour and transparency are not checked/);
+    expect(STRINGS.en.scopeNote).not.toMatch(/fonts and transparency are not checked/i);
+  });
+});
+
+describe('Phase 2A: report', () => {
+  it('groups findings into deterministic blockers, manual review and informational; manual findings are not failures', async () => {
+    const { buildReport } = await import('./workspace/report');
+    const res = inspection({
+      verdict: 'NEEDS_ATTENTION',
+      integrity: integrityOf({
+        BOOKMARKS: finding('BOOKMARKS', 'FAIL', 'BOOKMARKS_PRESENT'),
+        LINK_ANNOTATIONS: finding('LINK_ANNOTATIONS', 'WARNING', 'LINKS_DETECTED'),
+        IMAGE_DPI: finding('IMAGE_DPI', 'UNKNOWN', 'DPI_UNDETERMINED'),
+      }),
+    });
+    const report = buildReport({ fileName: 'b.pdf', intent: { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false }, inspection: res, fix: null });
+    expect(report.phase2a.deterministicBlockers.map((f) => f.id)).toEqual(['BOOKMARKS']);
+    expect(report.phase2a.manualReview.map((f) => f.id).sort()).toEqual(['IMAGE_DPI', 'LINK_ANNOTATIONS']);
+    expect(report.phase2a.informational).toHaveLength(8);
+    expect(report.phase2a.note).toMatch(/Manual-review findings are not failures/);
+    expect(report.scope).toMatch(/read-only PDF integrity checks/);
+    expect(report.inspection.integrity).toBe(res.integrity); // raw engine result preserved
+    expect(report.inspection.geometryVerdict).toBe('NEEDS_ATTENTION');
   });
 });

@@ -77,6 +77,9 @@ export function VerdictCard({
       {verdict === 'MANUAL_REVIEW_REQUIRED' && confirmedCount > 0 && (
         <p className="mt-2 text-sm font-semibold text-ink">{t('alsoConfirmed', { n: confirmedCount })}</p>
       )}
+      {verdict === 'NEEDS_ATTENTION' && manualCount > 0 && (
+        <p className="mt-2 text-sm font-semibold text-ink">{t('alsoManual', { n: manualCount })}</p>
+      )}
       {children && <div className="mt-3">{children}</div>}
     </section>
   );

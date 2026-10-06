@@ -6,6 +6,8 @@ export function TechnicalDetails({ inspection, fix }: { inspection: InspectionRe
   const { t } = useI18n();
   const data = {
     verdict: inspection.verdict,
+    geometryVerdict: inspection.geometryVerdict,
+    integrity: inspection.integrity ? { impact: inspection.integrity.impact, summary: inspection.integrity.summary } : undefined,
     geometry: { status: inspection.geometry.status, confidence: inspection.geometry.confidence },
     marginsStatus: inspection.categories.margins.status,
     manualReviewReasons: inspection.categories.margins.manualReview.map((e) => e.reason),

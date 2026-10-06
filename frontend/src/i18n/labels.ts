@@ -4,7 +4,7 @@ import type { I18nContextValue } from './context';
 import { STRINGS, type StringKey } from './strings';
 
 const STRING_KEYS = Object.keys(STRINGS.en);
-import type { ObjectType, Side } from '../engine/types';
+import type { IntegrityFinding, ObjectType, Side } from '../engine/types';
 
 type T = I18nContextValue['t'];
 
@@ -85,4 +85,36 @@ export function formatPageRanges(pages: number[]): string {
     }
   }
   return parts.join(', ');
+}
+
+// ---- Phase 2A integrity findings ----
+
+
+export function integrityTitle(t: T, id: string): string {
+  const key = `integrity_${id}` as StringKey;
+  return (STRING_KEYS as readonly string[]).includes(key) ? t(key) : id;
+}
+
+const mb = (bytes: number) => `${(bytes / 1_000_000).toFixed(1)} MB`;
+
+/** Short explanation of a finding: by check id + machine code, with a generic
+ * fallback so an unknown code is never shown as a pass or as a blank. */
+export function integrityExplanation(t: T, f: IntegrityFinding): string {
+  const d = f.details as Record<string, unknown>;
+  const e = (f.evidence ?? {}) as Record<string, unknown>;
+  const fontNames = Array.isArray(d.fonts) ? (d.fonts as { font?: string }[]).map((x) => x.font).filter(Boolean).slice(0, 5).join(', ') : '';
+  const types = e.otherSubtypes && typeof e.otherSubtypes === 'object' ? Object.keys(e.otherSubtypes as object).join(', ') : '';
+  const params = {
+    n: Number(d.items ?? 0),
+    count: Number(d.comments ?? e.links ?? e.belowReference ?? 0),
+    min: Number(e.minEffectiveDpi ?? 0),
+    fonts: fontNames || (f.objects ?? []).slice(0, 5).join(', '),
+    types,
+    size: typeof d.sizeBytes === 'number' ? mb(d.sizeBytes) : '',
+  };
+  const specific = `integrity_${f.id}_${f.code}` as StringKey;
+  if ((STRING_KEYS as readonly string[]).includes(specific)) return t(specific, params);
+  const generic = `integrity_generic_${f.code}` as StringKey;
+  if ((STRING_KEYS as readonly string[]).includes(generic)) return t(generic);
+  return t('integrity_generic_UNKNOWN');
 }

@@ -5,6 +5,9 @@
  */
 import type {
   ExpandOffer,
+  IntegrityFinding,
+  IntegrityResult,
+  IntegrityStatus,
   NormalizationPlan,
   NormalizationResult,
   PageGeometryAssessment,
@@ -32,6 +35,35 @@ function geometryPage(pageIndex: number, status: GeometryPage['status'] = 'compl
   };
 }
 
+const INTEGRITY_IDS = ['SECURITY_ENCRYPTION', 'BOOKMARKS', 'ANNOTATIONS_COMMENTS', 'FILE_SIZE', 'FONTS_EMBEDDED', 'DIGITAL_SIGNATURES', 'FORMS_WIDGETS', 'LINK_ANNOTATIONS', 'IMAGE_DPI', 'SPREADS', 'ORIENTATION'] as const;
+
+/** One finding of a given status (test builder; the engine produces the real ones). */
+export function finding(id: IntegrityFinding['id'], status: IntegrityStatus, code: string, over: Partial<IntegrityFinding> = {}): IntegrityFinding {
+  return {
+    id,
+    category: 'test',
+    status,
+    impact: status === 'FAIL' ? 'BLOCKING' : status === 'PASS' ? 'NONE' : 'MANUAL_REVIEW',
+    code,
+    message: code,
+    details: {},
+    ...over,
+  };
+}
+
+/** An integrity block: every check PASS except the given overrides (keyed by check id). */
+export function integrityOf(overrides: Partial<Record<IntegrityFinding['id'], IntegrityFinding>> = {}): IntegrityResult {
+  const checks = INTEGRITY_IDS.map((id) => overrides[id] ?? finding(id, 'PASS', 'NONE'));
+  const count = (st: IntegrityStatus) => checks.filter((c) => c.status === st).length;
+  const impact = checks.some((c) => c.impact === 'BLOCKING') ? 'BLOCKING' : checks.some((c) => c.impact === 'MANUAL_REVIEW') ? 'MANUAL_REVIEW' : 'NONE';
+  return {
+    version: 1,
+    checks,
+    summary: { total: checks.length, passed: count('PASS'), blocking: count('FAIL'), warning: count('WARNING'), unknown: count('UNKNOWN'), manualReview: checks.filter((c) => c.impact === 'MANUAL_REVIEW').length },
+    impact,
+  };
+}
+
 export function inspection(overrides: Partial<InspectionResult> & { verdict: Verdict }): InspectionResult {
   const violations = overrides.violations ?? [];
   const manualReview = overrides.categories?.margins.manualReview ?? [];
@@ -48,6 +80,9 @@ export function inspection(overrides: Partial<InspectionResult> & { verdict: Ver
     },
     violations,
     autofixPlans: [],
+    // Default: no Phase 2A findings, so the verdict equals the geometry verdict.
+    geometryVerdict: overrides.verdict,
+    integrity: integrityOf(),
     ...overrides,
   };
 }

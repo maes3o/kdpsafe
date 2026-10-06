@@ -189,6 +189,52 @@ export interface MarginsCategory {
  * passing). The UI must never recompute a verdict from violations[]
  * itself.
  */
+// ---------------------------------------------------------------------
+// Phase 2A: read-only PDF integrity checks (lib/integrity.js)
+// ---------------------------------------------------------------------
+
+export type IntegrityStatus = 'PASS' | 'FAIL' | 'WARNING' | 'UNKNOWN';
+/** BLOCKING = deterministic requirement violated (-> NEEDS_ATTENTION);
+ * MANUAL_REVIEW = detected / not determinable (-> MANUAL_REVIEW_REQUIRED). */
+export type IntegrityImpact = 'NONE' | 'BLOCKING' | 'MANUAL_REVIEW';
+
+export type IntegrityCheckId =
+  | 'SECURITY_ENCRYPTION'
+  | 'BOOKMARKS'
+  | 'ANNOTATIONS_COMMENTS'
+  | 'FILE_SIZE'
+  | 'FONTS_EMBEDDED'
+  | 'DIGITAL_SIGNATURES'
+  | 'FORMS_WIDGETS'
+  | 'LINK_ANNOTATIONS'
+  | 'IMAGE_DPI'
+  | 'SPREADS'
+  | 'ORIENTATION'
+  | 'INTEGRITY_INSPECTION';
+
+export interface IntegrityFinding {
+  id: IntegrityCheckId;
+  category: string;
+  status: IntegrityStatus;
+  impact: IntegrityImpact;
+  /** Machine reason (e.g. ENCRYPTED, NOT_EMBEDDED, CHECK_FAILED); the UI localizes by id + code. */
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+  pages?: number[];
+  objects?: string[];
+  evidence?: Record<string, unknown>;
+  diagnostics?: { code: string; message: string }[];
+}
+
+export interface IntegrityResult {
+  version: number;
+  /** Exactly one finding per check, in a fixed order. */
+  checks: IntegrityFinding[];
+  summary: { total: number; passed: number; blocking: number; warning: number; unknown: number; manualReview: number };
+  impact: IntegrityImpact;
+}
+
 export interface InspectionResult {
   document: {
     pageCount: number;
@@ -211,7 +257,13 @@ export interface InspectionResult {
    * level too by the engine itself; read either, they are identical. */
   violations: Violation[];
   autofixPlans: AutofixPlan[];
+  /** The ONE authoritative verdict: the geometry verdict rolled up with the
+   * Phase 2A integrity findings (blockers -> NEEDS_ATTENTION, manual/unknown
+   * -> MANUAL_REVIEW_REQUIRED). Never recompute it in the UI. */
   verdict: Verdict;
+  /** The geometry-only verdict (what `verdict` was before Phase 2A). */
+  geometryVerdict: Verdict;
+  integrity: IntegrityResult;
 }
 
 // ---------------------------------------------------------------------

@@ -4,7 +4,7 @@ import type { AutofixPlan, BBoxPt, UserIntent } from './engine/types';
 import { useI18n } from './i18n/context';
 import { useUnit } from './units/context';
 import { useWorkspace } from './workspace/useWorkspace';
-import { ambiguousEntries, applyablePlans, buildMarks, manualDisplayItems, planId, unresolvedBecauseOfPageCount } from './workspace/issues';
+import { ambiguousEntries, applyablePlans, buildMarks, integrityCounts, manualDisplayItems, planId, unresolvedBecauseOfPageCount } from './workspace/issues';
 import { baseName, buildReport, downloadBlob } from './workspace/report';
 import { EmptyState } from './components/EmptyState';
 import { BusyState } from './components/BusyState';
@@ -22,6 +22,7 @@ import { AutofixPanel } from './components/AutofixPanel';
 import { IssueList } from './components/IssueList';
 import { DownloadPanel } from './components/DownloadPanel';
 import { TechnicalDetails } from './components/TechnicalDetails';
+import { IntegrityFindings } from './components/IntegrityFindings';
 import { AutofixBlockedNotice, PageCountRangeNotice } from './components/Notices';
 import { ErrorNotice } from './components/ErrorNotice';
 import { PdfViewer } from './components/viewer/PdfViewer';
@@ -115,8 +116,12 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
   // The preview tab only exists on narrow screens (desktop always shows it).
   const activeTab = isDesktop && tab === 'preview' ? 'issues' : tab;
-  const manualCount = shown ? manualDisplayItems(shown).length : 0;
-  const issueCount = shown ? shown.violations.length + manualCount : 0;
+  // Geometry items plus the Phase 2A findings the engine rolled into the verdict.
+  const integ = shown ? integrityCounts(shown) : { blocking: 0, manual: 0 };
+  const geometryManualCount = shown ? manualDisplayItems(shown).length : 0;
+  const confirmedCount = shown ? shown.violations.length + integ.blocking : 0;
+  const manualCount = geometryManualCount + integ.manual;
+  const issueCount = confirmedCount + manualCount;
   const viewerOnNarrow = !!inspection && activeTab === 'preview';
 
   const toolbarExtra = fixedAvailable ? (
@@ -170,7 +175,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
           <div inert={working} className={`space-y-4 ${working ? 'opacity-50' : ''}`}>
             <VerdictCard
               verdict={shown.verdict}
-              confirmedCount={shown.violations.length}
+              confirmedCount={confirmedCount}
               manualCount={manualCount}
               fixableCount={!fix && autofixAllowed ? applyable.length : 0}
             >
@@ -242,7 +247,8 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
             {activeTab === 'issues' && (
               <TabPanel id="issues">
-                <IssueList inspection={shown} geometry={state.geometry} afterFix={fixedAvailable} activeId={activeId} onFocus={focusOn} />
+                <IssueList inspection={shown} geometry={state.geometry} afterFix={fixedAvailable} activeId={activeId} onFocus={focusOn} suppressEmpty={integ.blocking + integ.manual > 0} />
+                <IntegrityFindings integrity={shown.integrity} />
               </TabPanel>
             )}
             {activeTab === 'details' && (
