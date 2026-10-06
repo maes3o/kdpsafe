@@ -85,8 +85,13 @@ async function main() {
   //    override did not exist) would otherwise have survived — the
   //    override must strip it regardless of the candidate's own risk
   //    level.
+  // 'NON_ZERO_ROTATION' is used here specifically because it is a problem
+  // kind NO strategy (Phase 1 or Phase 2) ever targets — unlike 'TOO_LARGE'/
+  // 'WRONG_ASPECT', which Phase 2's PROPORTIONAL_SCALE/SCALE_PLUS_PADDING
+  // now legitimately target (see repairPlanner.js's
+  // STRATEGY_TARGETABLE_PROBLEM_KINDS).
   const { applyCentralSafetyOverride } = require('../lib/smartfix/repairPlanner');
-  const fakeProblem = { pageIndex: 0, kind: 'TOO_LARGE', detail: 'test', measured: {}, expected: {} };
+  const fakeProblem = { pageIndex: 0, kind: 'NON_ZERO_ROTATION', detail: 'test', measured: {}, expected: {} };
   const fakeCandidate = { type: 'FAKE_STRATEGY', risk: { level: 'SAFE_AUTOFIX', reasons: ['should never survive'] } };
   const survivors = applyCentralSafetyOverride(fakeProblem, [fakeCandidate]);
   assert.equal(survivors.length, 0, 'central override must strip every candidate for an untargetable problem kind, regardless of its own classify() result');
