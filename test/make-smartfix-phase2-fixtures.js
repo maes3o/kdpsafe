@@ -38,6 +38,13 @@ const TARGET_6X9_WITH_BLEED = { trimSize: { widthIn: 6, heightIn: 9 }, bleed: tr
  * @param {boolean} [opts.bleed]  filler pages' size follows this too
  * @param {{rect?: {xIn,yIn,widthIn,heightIn}, quadPoints?: boolean}} [opts.annotation]
  */
+// 1x1 red pixel PNG — the smallest possible real embedded raster image,
+// standing in for a "low-resolution image" fixture: any placement larger
+// than a postage stamp makes its effective DPI drop far below any
+// reasonable threshold.
+const ONE_PX_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAAl21bKAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
 async function buildTestBook(opts) {
   const {
     pageWidthIn,
@@ -47,6 +54,7 @@ async function buildTestBook(opts) {
     bleed = false,
     annotation = null,
     fillerCount = FILLER_PAGE_COUNT,
+    lowResImageIn = null,
   } = opts;
 
   const doc = await PDFDocument.create();
@@ -62,6 +70,15 @@ async function buildTestBook(opts) {
       width: rectangleIn.widthIn * PT_PER_IN,
       height: rectangleIn.heightIn * PT_PER_IN,
       color: rgb(0, 0, 0),
+    });
+  }
+  if (lowResImageIn) {
+    const png = await doc.embedPng(Buffer.from(ONE_PX_PNG_BASE64, 'base64'));
+    testPage.drawImage(png, {
+      x: lowResImageIn.xIn * PT_PER_IN,
+      y: lowResImageIn.yIn * PT_PER_IN,
+      width: lowResImageIn.widthIn * PT_PER_IN,
+      height: lowResImageIn.heightIn * PT_PER_IN,
     });
   }
 
@@ -150,6 +167,21 @@ function buildAspectMatchedOversizedBook() {
 }
 
 /**
+ * Aspect-MISMATCHED oversized page (8.5x11, no bleed target) — the
+ * general SCALE_PLUS_PADDING case without bleed, content placed
+ * comfortably inside margins both before and after scaling (clean,
+ * should-succeed case; distinct from build85x11ToTargetWithBleedBook,
+ * which targets WITH bleed).
+ */
+function buildTooLargeMismatchedBookForAudit() {
+  return buildTestBook({
+    pageWidthIn: 8.5,
+    pageHeightIn: 11,
+    rectangleIn: { xIn: 1.5, yIn: 1.5, widthIn: 5.5, heightIn: 8 },
+  });
+}
+
+/**
  * Deliberately UNSAFE scale case: content rectangle sits EXACTLY at the
  * current page's own safe-margin boundary (compliant pre-scale, by
  * construction), on a page that otherwise matches target aspect ratio.
@@ -208,6 +240,94 @@ function buildOversizedBookWithComplexAnnotation() {
   });
 }
 
+/**
+ * Oversized page carrying a REAL embedded low-resolution raster image
+ * (a 1x1px PNG stretched across most of the page) — tests the DPI guard
+ * against a genuine image XObject, not a synthetic unit-test number.
+ * Still only ever reached via a shrink (scaleFactor<1), so this is
+ * expected to classify as safe (shrinking a low-res image never makes it
+ * worse) — see dpiEstimator.js's header for why the guard's "unmeasured
+ * image -> fails safe" branch is never reachable through this phase's
+ * own registered strategies (which never enlarge).
+ */
+function buildOversizedBookWithLowResImage() {
+  return buildTestBook({
+    pageWidthIn: 8,
+    pageHeightIn: 12,
+    lowResImageIn: { xIn: 1, yIn: 1, widthIn: 6, heightIn: 10 },
+  });
+}
+
+/** A too-small (padding) page carrying an ordinary Link annotation. */
+function buildTooSmallBookWithSafeAnnotation(deficitIn) {
+  return buildTestBook({
+    pageWidthIn: 6 - deficitIn,
+    pageHeightIn: 9 - deficitIn,
+    rectangleIn: { xIn: 1, yIn: 1, widthIn: (6 - deficitIn) - 2, heightIn: (9 - deficitIn) - 2 },
+    annotation: { rect: { xIn: 1.2, yIn: 1.2, widthIn: 1, heightIn: 0.3 } },
+  });
+}
+
+/**
+ * Interleaved mixed-page document: three DIFFERENT real scenarios in one
+ * book (exact/no-op, too-small/padding, oversized-aspect-matched/scale),
+ * not just two distinct pages plus uniform filler — closer to a genuine
+ * manuscript where different pages came from different sources.
+ */
+async function buildInterleavedMixedBook() {
+  const doc = await PDFDocument.create();
+
+  const exactPage = doc.addPage([6 * PT_PER_IN, 9 * PT_PER_IN]);
+  exactPage.drawRectangle({ x: 1 * PT_PER_IN, y: 1 * PT_PER_IN, width: 4 * PT_PER_IN, height: 7 * PT_PER_IN, color: rgb(0, 0, 0) });
+
+  const tooSmallPage = doc.addPage([(6 - 0.3) * PT_PER_IN, (9 - 0.3) * PT_PER_IN]);
+  tooSmallPage.drawRectangle({ x: 1 * PT_PER_IN, y: 1 * PT_PER_IN, width: ((6 - 0.3) - 2) * PT_PER_IN, height: ((9 - 0.3) - 2) * PT_PER_IN, color: rgb(0, 0, 0) });
+
+  const oversizedPage = doc.addPage([8 * PT_PER_IN, 12 * PT_PER_IN]);
+  oversizedPage.drawRectangle({ x: 1 * PT_PER_IN, y: 1 * PT_PER_IN, width: 6 * PT_PER_IN, height: 10 * PT_PER_IN, color: rgb(0, 0, 0) });
+
+  for (let i = 0; i < FILLER_PAGE_COUNT; i++) {
+    doc.addPage([6 * PT_PER_IN, 9 * PT_PER_IN]);
+  }
+  return doc.save();
+}
+
+/** Signed (/V present) PDF whose single real page is oversized. */
+async function buildSignedOversizedPdf() {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([8 * PT_PER_IN, 12 * PT_PER_IN]);
+  page.drawRectangle({ x: 1 * PT_PER_IN, y: 1 * PT_PER_IN, width: 6 * PT_PER_IN, height: 10 * PT_PER_IN, color: rgb(0, 0, 0) });
+  const ctx = doc.context;
+
+  const sigDict = ctx.obj({
+    Type: 'Sig',
+    Filter: 'Adobe.PPKLite',
+    SubFilter: 'adbe.pkcs7.detached',
+    Contents: PDFHexString.of('DEAD'),
+    ByteRange: ctx.obj([0, 0, 0, 0]),
+  });
+  const sigRef = ctx.register(sigDict);
+
+  const widgetDict = ctx.obj({
+    FT: 'Sig',
+    Type: 'Annot',
+    Subtype: 'Widget',
+    Rect: ctx.obj([0, 0, 10, 10]),
+    V: sigRef,
+    T: PDFString.of('Signature1'),
+  });
+  const widgetRef = ctx.register(widgetDict);
+
+  const acroForm = ctx.obj({ Fields: ctx.obj([widgetRef]), SigFlags: 3 });
+  doc.catalog.set(PDFName.of('AcroForm'), ctx.register(acroForm));
+  page.node.set(PDFName.of('Annots'), ctx.obj([widgetRef]));
+
+  for (let i = 0; i < FILLER_PAGE_COUNT; i++) {
+    doc.addPage([6 * PT_PER_IN, 9 * PT_PER_IN]);
+  }
+  return doc.save();
+}
+
 /** Mixed-page-size book: page 0 too-small (padding), page 1 oversized aspect-matched (scale). */
 async function buildMixedStrategyBook() {
   const doc = await PDFDocument.create();
@@ -246,10 +366,15 @@ module.exports = {
   buildTooSmallBook,
   build85x11ToTargetWithBleedBook,
   buildAspectMatchedOversizedBook,
+  buildTooLargeMismatchedBookForAudit,
   buildScaleMarginViolationBook,
   buildRotatedOversizedBook,
   buildOversizedBookWithSafeAnnotation,
   buildOversizedBookWithComplexAnnotation,
+  buildOversizedBookWithLowResImage,
+  buildTooSmallBookWithSafeAnnotation,
+  buildInterleavedMixedBook,
+  buildSignedOversizedPdf,
   buildMixedStrategyBook,
   buildEncryptedOversizedPdf,
 };
