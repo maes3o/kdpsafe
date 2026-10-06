@@ -295,8 +295,11 @@ export interface PageContext {
   pageNumber?: number;
 }
 
-/** Where the added space goes when a page is expanded (always chosen by the user). */
-export type ExpandAnchor = 'center' | 'keep-origin';
+/** The only anchor available to the product: the page keeps its existing origin
+ * (lower-left corner) and space is added on the right and at the top. A centered
+ * variant exists in the engine for research only and is never exposed (it needs a
+ * negative MediaBox origin, which is unsupported). */
+export type ExpandAnchor = 'keep-origin';
 
 export interface PreflightOptions {
   userIntent: UserIntent;

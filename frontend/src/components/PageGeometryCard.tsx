@@ -59,7 +59,6 @@ export function PageGeometryCard({
             ? t('expandApplied', {
                 size: formatPair(normalization.target.widthPt / 72, normalization.target.heightPt / 72),
                 n: normalization.pagesChanged,
-                anchor: t(normalization.anchor === 'keep-origin' ? 'expandAnchorKeep' : 'expandAnchorCenter'),
               })
             : t('geoApplied', { n: normalization.pagesChanged })}
         </p>

@@ -684,7 +684,7 @@ describe('expand page (advanced repair #1)', () => {
     makeEngine({
       preflight: (n) => (n === 1 ? UNRESOLVED_30 : READY),
       assess: (n) => (n === 1 ? EXPANDABLE : assessment()),
-      normalize: () => expandApplied('center', READY),
+      normalize: () => expandApplied('keep-origin', READY),
       verify: () => verifyResult({ before: READY }),
       ...over,
     });
@@ -699,23 +699,23 @@ describe('expand page (advanced repair #1)', () => {
     expect(panel()).toHaveAttribute('data-expand-state', 'available');
     expect(panel()).toHaveTextContent('5.5 × 8.5 in');
     expect(panel()).toHaveTextContent(/does not know whether this extra white space is acceptable/);
-    expect(panel()).toHaveTextContent(/not scaled, cropped, moved or rewritten/);
+    expect(panel()).toHaveTextContent(/not moved, scaled, cropped or rewritten/);
     for (const r of within(panel()).getAllByRole('radio')) expect(r).not.toBeChecked();
     expect(applyBtn()).toBeDisabled();
 
-    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('radio', { name: /Keep existing origin/ }));
     expect(applyBtn()).toBeDisabled(); // anchor alone is not confirmation
     await user.click(within(panel()).getByRole('checkbox'));
     expect(applyBtn()).toBeEnabled();
     expect(engine.normalizePageGeometry).not.toHaveBeenCalled();
   });
 
-  it('CENTER: calls the engine with the explicit anchor + confirmation, shows the engine AFTER READY, neutral card, original kept for undo', async () => {
+  it('KEEP-ORIGIN: calls the engine with the explicit anchor + confirmation, shows the engine AFTER READY, neutral card, original kept for undo', async () => {
     const engine = engineFor();
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
     await screen.findByTestId('geometry-card');
-    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('radio', { name: /Keep existing origin/ }));
     await user.click(within(panel()).getByRole('button', { name: 'Review change' }));
     expect(screen.getByTestId('expand-review')).toHaveTextContent('After: 6 × 9 in');
     expect(screen.getByTestId('expand-review')).toHaveTextContent('Before: 5.5 × 8.5 in');
@@ -725,13 +725,13 @@ describe('expand page (advanced repair #1)', () => {
     await waitFor(() => expect(engine.normalizePageGeometry).toHaveBeenCalledTimes(1));
     const [bytes, options] = engine.normalizePageGeometry.mock.calls[0];
     expect(bytes.length).toBe(new Uint8Array(await ORIGINAL.arrayBuffer()).length);
-    expect(options.expandPage).toEqual({ anchor: 'center', confirmed: true });
+    expect(options.expandPage).toEqual({ anchor: 'keep-origin', confirmed: true });
     expect(options.userIntent.trimSize).toEqual({ widthIn: 6, heightIn: 9 });
 
     await waitFor(() => expect(verdict()).toHaveAttribute('data-verdict', 'READY'));
     const card = screen.getByTestId('geometry-card');
     expect(card).toHaveAttribute('data-geometry-state', 'applied');
-    expect(card).toHaveTextContent('Pages expanded to 6 × 9 in on 30 page(s) · anchor: Center');
+    expect(card).toHaveTextContent('Pages expanded to 6 × 9 in on 30 page(s); the existing origin was kept');
     expect(card.outerHTML).not.toMatch(/status-ready/);
     expect(card).not.toHaveTextContent('✓');
     expect(card).toHaveTextContent(/Only page boxes were changed/);
@@ -745,29 +745,29 @@ describe('expand page (advanced repair #1)', () => {
     expect(engine.runPreflight.mock.calls[1][0].length).toBe(engine.runPreflight.mock.calls[0][0].length);
   });
 
-  it('KEEP-ORIGIN: the other anchor is passed through exactly', async () => {
-    const engine = engineFor({ normalize: () => expandApplied('keep-origin', READY) });
-    const { user } = renderApp(engine);
-    await uploadAndRun(user, screen);
-    await screen.findByTestId('geometry-card');
-    await user.click(within(panel()).getByRole('radio', { name: /Keep origin/ }));
-    await user.click(within(panel()).getByRole('checkbox'));
-    await user.click(applyBtn());
-    await waitFor(() => expect(engine.normalizePageGeometry).toHaveBeenCalledTimes(1));
-    expect(engine.normalizePageGeometry.mock.calls[0][1].expandPage).toEqual({ anchor: 'keep-origin', confirmed: true });
-    await waitFor(() => expect(screen.getByTestId('geometry-card')).toHaveTextContent('anchor: Keep origin'));
-  });
-
-  it('changing the anchor clears the confirmation (a new choice needs a new confirmation)', async () => {
+  it('keep-origin is the ONLY anchor offered: no centered option, and the copy says the origin is kept and nothing is moved or scaled', async () => {
     const { user } = renderApp(engineFor());
     await uploadAndRun(user, screen);
     await screen.findByTestId('geometry-card');
-    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
-    await user.click(within(panel()).getByRole('checkbox'));
-    expect(applyBtn()).toBeEnabled();
-    await user.click(within(panel()).getByRole('radio', { name: /Keep origin/ }));
-    expect(within(panel()).getByRole('checkbox')).not.toBeChecked();
-    expect(applyBtn()).toBeDisabled();
+    expect(within(panel()).getAllByRole('radio')).toHaveLength(1);
+    expect(within(panel()).getByRole('radio', { name: /Keep existing origin/ })).toBeInTheDocument();
+    expect(panel()).not.toHaveTextContent(/center|centre/i);
+    expect(panel()).toHaveTextContent(/existing origin \(lower-left corner\) is kept/);
+    expect(panel()).toHaveTextContent(/not moved, scaled, cropped or rewritten/);
+    expect(panel()).toHaveTextContent(/added on the right and .* at the top/);
+    expect(panel()).toHaveTextContent(/Nothing is moved or scaled/);
+  });
+
+  it('a negative MediaBox origin is reported as unsupported and cannot be applied', async () => {
+    const offer = expandOffer({ eligible: false, reasons: ['NEGATIVE_MEDIA_BOX_ORIGIN'], previews: null });
+    const engine = engineFor({ assess: () => assessment({ ...EXPANDABLE, expand: offer }) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    expect(panel()).toHaveAttribute('data-expand-state', 'unavailable');
+    expect(panel()).toHaveTextContent(/negative MediaBox origin, which is not supported/);
+    expect(within(panel()).queryByRole('button')).not.toBeInTheDocument();
+    expect(engine.normalizePageGeometry).not.toHaveBeenCalled();
   });
 
   it('AFTER not READY (engine fails closed): no success, original stays, the real reason is shown', async () => {
@@ -783,7 +783,7 @@ describe('expand page (advanced repair #1)', () => {
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
     await screen.findByTestId('geometry-card');
-    await user.click(within(panel()).getByRole('radio', { name: /Keep origin/ }));
+    await user.click(within(panel()).getByRole('radio', { name: /Keep existing origin/ }));
     await user.click(within(panel()).getByRole('checkbox'));
     await user.click(applyBtn());
     const alert = await screen.findByRole('alert');
@@ -798,11 +798,11 @@ describe('expand page (advanced repair #1)', () => {
   });
 
   it('defense in depth: even if the engine claimed success, a non-READY AFTER is never adopted', async () => {
-    const engine = engineFor({ normalize: () => expandApplied('center', NEEDS_ATTENTION) });
+    const engine = engineFor({ normalize: () => expandApplied('keep-origin', NEEDS_ATTENTION) });
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
     await screen.findByTestId('geometry-card');
-    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('radio', { name: /Keep existing origin/ }));
     await user.click(within(panel()).getByRole('checkbox'));
     await user.click(applyBtn());
     await screen.findByRole('alert');
@@ -812,12 +812,12 @@ describe('expand page (advanced repair #1)', () => {
 
   it('a safety failure inside the engine is shown as an error; the file is not modified', async () => {
     const engine = engineFor({
-      normalize: () => ({ ...expandApplied('center', READY), applied: false, after: null, expand: undefined, safety: { ok: false, checks: [{ id: 'CONTENT_STREAMS_CHANGED', ok: false }], failure: 'CONTENT_STREAMS_CHANGED' } }),
+      normalize: () => ({ ...expandApplied('keep-origin', READY), applied: false, after: null, expand: undefined, safety: { ok: false, checks: [{ id: 'CONTENT_STREAMS_CHANGED', ok: false }], failure: 'CONTENT_STREAMS_CHANGED' } }),
     });
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
     await screen.findByTestId('geometry-card');
-    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('radio', { name: /Keep existing origin/ }));
     await user.click(within(panel()).getByRole('checkbox'));
     await user.click(applyBtn());
     const alert = await screen.findByRole('alert');
@@ -860,7 +860,8 @@ describe('expand page (advanced repair #1)', () => {
     await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
     await screen.findByTestId('geometry-card');
     expect(panel()).toHaveTextContent('Розширити сторінку до вибраного розміру');
+    expect(panel()).not.toHaveTextContent(/центр/i);
     expect(panel()).toHaveTextContent('Це ваше рішення.');
-    expect(within(panel()).getByRole('radio', { name: /По центру/ })).toBeInTheDocument();
+    expect(within(panel()).getByRole('radio', { name: /Зберегти наявний початок координат/ })).toBeInTheDocument();
   });
 });

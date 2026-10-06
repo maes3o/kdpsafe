@@ -13,6 +13,7 @@
 
 import './bufferPolyfill';
 import { configurePdfjs } from './pdfjsSetup';
+import { sanitizeExpandRequest } from './expandRequest';
 import { runPreflight, verifyAutofix } from '../../../lib/orchestrator';
 import { assessPageGeometry, normalizePageGeometry } from '../../../lib/pageGeometry';
 import type { InspectionResult, NormalizationResult, PageGeometryAssessment, PreflightOptions, VerifyAutofixResult } from './types';
@@ -32,7 +33,7 @@ export type PreflightWorkerResponse =
 // contract, so results are cast through `unknown` explicitly.
 self.onmessage = async (event: MessageEvent<PreflightWorkerRequest>) => {
   const msg = event.data;
-  const opts = { userIntent: msg.options.userIntent, pageContext: msg.options.pageContext, expandPage: msg.options.expandPage };
+  const opts = { userIntent: msg.options.userIntent, pageContext: msg.options.pageContext, expandPage: sanitizeExpandRequest(msg.options.expandPage) };
   try {
     await configurePdfjs();
     const bytes = new Uint8Array(msg.pdfBytes);

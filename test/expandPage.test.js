@@ -4,6 +4,10 @@
  * Advanced Page Repair #1: EXPAND PAGE to the selected size (lib/pageGeometry.js:
  * assessExpandPage / applyExpandPage / normalizePageGeometry with opts.expandPage).
  *
+ * PRODUCTION BOUNDARY (finalized): 'keep-origin' is the only available anchor and a negative
+ * MediaBox origin is unsupported. 'center' (negative origin when the old origin is 0) stays
+ * implemented for research/tests behind `research: true` and is labelled RESEARCH below.
+ *
  * Page boxes only. Every "safe" claim is checked on real saved bytes with the
  * real preflight; every rejection must leave the input untouched; the verifier
  * is attacked with mutations to prove each invariant really detects a change.
@@ -77,7 +81,9 @@ async function readBack(bytes) {
   return d;
 }
 
-const expand = (bytes, anchor, extra = {}) => normalizePageGeometry(bytes, { userIntent: U, expandPage: { anchor, confirmed: true }, ...extra });
+// Production path: only 'keep-origin' exists. `research: true` is the test/research switch the frontend worker never forwards.
+const expand = (bytes, anchor = 'keep-origin', extra = {}) => normalizePageGeometry(bytes, { userIntent: U, expandPage: { anchor, confirmed: true }, ...extra });
+const expandResearch = (bytes, anchor) => normalizePageGeometry(bytes, { userIntent: U, expandPage: { anchor, confirmed: true, research: true } });
 
 let n = 0;
 async function runCase(label, fn) {
@@ -90,15 +96,18 @@ async function main() {
   const small = await make(); // 5.5 x 8.5 in, content inset 60
 
   // ===== assess: eligibility + preview, no side effects =====
-  await runCase('assessExpandPage: 5.5x8.5 -> 6x9 is eligible; previews show the space each anchor adds', async () => {
+  await runCase('assessExpandPage: 5.5x8.5 -> 6x9 is eligible; production preview shows keep-origin only', async () => {
     const copy = new Uint8Array(small);
     const a = await assessExpandPage(small, U);
     assert.equal(a.eligible, true);
     assert.deepEqual(a.reasons, []);
     assert.deepEqual(a.target, { widthPt: 432, heightPt: 648 });
     assert.deepEqual(a.current, { widthPt: 396, heightPt: 612 });
-    assert.deepEqual(a.previews.center.addedPt, { left: 18, bottom: 18, right: 18, top: 18 });
+    assert.deepEqual(Object.keys(a.previews), ['keep-origin'], 'production exposes only the keep-origin anchor');
     assert.deepEqual(a.previews['keep-origin'].addedPt, { left: 0, bottom: 0, right: 36, top: 36 });
+    // research view still knows the centered variant
+    const r = await assessExpandPage(small, U, { research: true });
+    assert.deepEqual(r.previews.center.addedPt, { left: 18, bottom: 18, right: 18, top: 18 });
     assert.ok(same(small, copy), 'assess never changes the input');
   });
 
@@ -121,10 +130,10 @@ async function main() {
     assert.equal(res.after.verdict, 'READY');
   });
 
-  // ===== CENTER =====
-  await runCase('CENTER: boxes, content, annotations, resources, metadata; REAL preflight READY', async () => {
+  // ===== CENTER (RESEARCH ONLY: negative MediaBox origin) =====
+  await runCase('RESEARCH center: boxes, content, annotations, resources, metadata; REAL preflight READY', async () => {
     const copy = new Uint8Array(small);
-    const res = await expand(small, 'center');
+    const res = await expandResearch(small, 'center');
     assert.equal(res.applied, true);
     assert.equal(res.safety.ok, true);
     assert.equal(res.after.verdict, 'READY', 'AFTER verdict comes from the real runPreflight');
@@ -154,10 +163,11 @@ async function main() {
   });
 
   // ===== KEEP-ORIGIN =====
-  await runCase('KEEP-ORIGIN: lower-left origin stays; space is added at the top/right; REAL preflight READY', async () => {
+  await runCase('KEEP-ORIGIN (production): lower-left origin stays; space is added at the top/right; REAL preflight READY', async () => {
     const res = await expand(small, 'keep-origin');
     assert.equal(res.applied, true);
     assert.equal(res.after.verdict, 'READY');
+    assert.ok(res.safety.checks.some((c) => c.id === 'MEDIA_BOX_ORIGIN_NON_NEGATIVE' && c.ok));
     const out = await readBack(res.outputBytes);
     out.getPages().forEach((p) => {
       assert.deepEqual(boxOf(p.getMediaBox()), [0, 0, 432, 648]);
@@ -165,9 +175,9 @@ async function main() {
     });
   });
 
-  await runCase('non-zero MediaBox origin: both anchors keep the old page at the exact offset', async () => {
+  await runCase('non-zero (positive) MediaBox origin: keep-origin keeps it exactly; research center would go negative', async () => {
     const shifted = await make({ origin: [10, 20] });
-    const c = await expand(shifted, 'center');
+    const c = await expandResearch(shifted, 'center');
     assert.equal(c.applied, true);
     (await readBack(c.outputBytes)).getPages().forEach((p) => assert.deepEqual(boxOf(p.getMediaBox()), [-8, 2, 432, 648]));
     const k = await expand(shifted, 'keep-origin');
@@ -177,18 +187,18 @@ async function main() {
 
   await runCase('only one dimension smaller (6 x 8.5 -> 6 x 9): width untouched, height expanded', async () => {
     const b = await make({ w: 432, h: 612 });
-    const res = await expand(b, 'center');
+    const res = await expand(b, 'keep-origin');
     assert.equal(res.applied, true);
-    (await readBack(res.outputBytes)).getPages().forEach((p) => assert.deepEqual(boxOf(p.getMediaBox()), [0, -18, 432, 648]));
+    (await readBack(res.outputBytes)).getPages().forEach((p) => assert.deepEqual(boxOf(p.getMediaBox()), [0, 0, 432, 648]));
   });
 
   await runCase('an explicit CropBox equal to the MediaBox is expanded with it (otherwise it would crop)', async () => {
     const b = await make({ setup: (p) => p.setCropBox(0, 0, 396, 612) });
-    const res = await expand(b, 'center');
+    const res = await expand(b, 'keep-origin');
     assert.equal(res.applied, true);
     (await readBack(res.outputBytes)).getPages().forEach((p) => {
-      assert.deepEqual(boxOf(p.getCropBox()), [-18, -18, 432, 648]);
-      assert.deepEqual(boxOf(p.getMediaBox()), [-18, -18, 432, 648]);
+      assert.deepEqual(boxOf(p.getCropBox()), [0, 0, 432, 648]);
+      assert.deepEqual(boxOf(p.getMediaBox()), [0, 0, 432, 648]);
     });
   });
 
@@ -199,7 +209,7 @@ async function main() {
 
   // ===== explicit confirmation + anchor =====
   await runCase('no confirmation -> nothing is applied (original bytes returned)', async () => {
-    for (const expandPage of [{ anchor: 'center' }, { anchor: 'center', confirmed: false }, { anchor: 'center', confirmed: 'yes' }]) {
+    for (const expandPage of [{ anchor: 'keep-origin' }, { anchor: 'keep-origin', confirmed: false }, { anchor: 'keep-origin', confirmed: 'yes' }]) {
       const res = await normalizePageGeometry(small, { userIntent: U, expandPage });
       assert.equal(res.applied, false);
       assert.equal(res.safety.failure, 'CONFIRMATION_REQUIRED');
@@ -208,7 +218,7 @@ async function main() {
   });
 
   await runCase('no / invalid anchor -> rejected, never defaulted', async () => {
-    for (const anchor of [undefined, null, '', 'centre', 'CENTER', 'top-left', 0]) {
+    for (const anchor of [undefined, null, '', 'centre', 'CENTER', 'Keep-Origin', 'top-left', 0]) {
       const res = await normalizePageGeometry(small, { userIntent: U, expandPage: { anchor, confirmed: true } });
       assert.equal(res.applied, false);
       assert.equal(res.safety.failure, 'ANCHOR_REQUIRED');
@@ -218,6 +228,58 @@ async function main() {
     assert.equal(direct.ok, false);
     assert.equal(direct.failure, 'ANCHOR_REQUIRED');
     assert.equal(direct.outputBytes, null);
+  });
+
+  await runCase('production: the centered anchor is NOT available (and never reaches the engine from the UI worker); research flag keeps it testable', async () => {
+    const copy = new Uint8Array(small);
+    const res = await normalizePageGeometry(small, { userIntent: U, expandPage: { anchor: 'center', confirmed: true } });
+    assert.equal(res.applied, false);
+    assert.equal(res.safety.failure, 'ANCHOR_NOT_AVAILABLE');
+    assert.ok(same(res.outputBytes, copy));
+    const direct = await applyExpandPage(small, U, 'center');
+    assert.equal(direct.ok, false);
+    assert.equal(direct.failure, 'ANCHOR_NOT_AVAILABLE');
+    assert.equal(direct.outputBytes, null);
+    const research = await applyExpandPage(small, U, 'center', { research: true });
+    assert.equal(research.ok, true, 'center stays implemented for research/tests');
+  });
+
+  await runCase('negative MediaBox origin is unsupported: input with a negative origin -> NEGATIVE_MEDIA_BOX_ORIGIN, nothing applied', async () => {
+    for (const origin of [[-10, 0], [0, -10], [-18, -18]]) {
+      const neg = await make({ origin });
+      const copy = new Uint8Array(neg);
+      const a = await assessExpandPage(neg, U);
+      assert.equal(a.eligible, false);
+      assert.ok(a.reasons.includes('NEGATIVE_MEDIA_BOX_ORIGIN'), JSON.stringify(a.reasons));
+      const direct = await applyExpandPage(neg, U, 'keep-origin');
+      assert.equal(direct.ok, false);
+      assert.equal(direct.failure, 'NOT_ELIGIBLE');
+      assert.equal(direct.outputBytes, null);
+      const res = await expand(neg, 'keep-origin');
+      assert.equal(res.applied, false);
+      assert.ok(same(res.outputBytes, copy));
+      assert.ok(same(neg, copy));
+    }
+  });
+
+  await runCase('keep-origin NEVER writes a negative origin: for every accepted input the saved MediaBox origin equals the input origin and is >= 0', async () => {
+    for (const origin of [[0, 0], [10, 20], [0, 36], [100, 100]]) {
+      const b = await make({ origin });
+      const res = await expand(b, 'keep-origin');
+      assert.equal(res.applied, true, `origin ${origin}`);
+      (await readBack(res.outputBytes)).getPages().forEach((p) => {
+        const m = p.getMediaBox();
+        assert.deepEqual([m.x, m.y], origin);
+        assert.ok(m.x >= 0 && m.y >= 0);
+      });
+    }
+  });
+
+  await runCase('research center on a zero origin DOES produce a negative origin (this is why it is not exposed)', async () => {
+    const res = await expandResearch(small, 'center');
+    assert.equal(res.applied, true);
+    const m = (await readBack(res.outputBytes)).getPage(0).getMediaBox();
+    assert.ok(m.x < 0 && m.y < 0);
   });
 
   await runCase('intent is never inferred: missing trim size or bleed choice -> rejected', async () => {
@@ -246,11 +308,11 @@ async function main() {
       assert.ok(a, 'a smaller page exists, so the offer is described');
       assert.equal(a.eligible, false);
       assert.ok(a.reasons.includes(reason), `reasons ${JSON.stringify(a.reasons)}`);
-      const direct = await applyExpandPage(bytes, intent, 'center');
+      const direct = await applyExpandPage(bytes, intent, 'keep-origin');
       assert.equal(direct.ok, false);
       assert.equal(direct.failure, 'NOT_ELIGIBLE');
       assert.equal(direct.outputBytes, null);
-      const res = await normalizePageGeometry(bytes, { userIntent: intent, expandPage: { anchor: 'center', confirmed: true } });
+      const res = await normalizePageGeometry(bytes, { userIntent: intent, expandPage: { anchor: 'keep-origin', confirmed: true } });
       assert.equal(res.applied, false);
       assert.equal(res.safety.ok, false);
       assert.ok(same(res.outputBytes, copy), 'original bytes returned');
@@ -293,7 +355,7 @@ async function main() {
     for (const [w, h] of [[432, 648], [595.28, 841.89], [612, 792]]) {
       const b = await make({ w, h });
       assert.equal(await assessExpandPage(b, U), null);
-      const res = await normalizePageGeometry(b, { userIntent: U, expandPage: { anchor: 'center', confirmed: true } });
+      const res = await normalizePageGeometry(b, { userIntent: U, expandPage: { anchor: 'keep-origin', confirmed: true } });
       assert.equal(res.applied, false);
       assert.equal(res.safety.failure, 'NOTHING_TO_EXPAND');
       assert.ok(same(res.outputBytes, b));
@@ -309,14 +371,14 @@ async function main() {
     assert.ok(same(k.outputBytes, tight), 'original bytes returned');
     assert.ok(k.after && k.after.verdict !== 'READY', 'the real AFTER preflight is returned for display');
     assert.ok(k.safety.checks.some((c) => c.id === 'AFTER_PREFLIGHT_READY' && c.ok === false));
-    // the same file with the other (explicitly chosen) anchor passes
-    const c = await expand(tight, 'center');
+    // research only: the centered variant of the same file would pass (it is not offered in production)
+    const c = await expandResearch(tight, 'center');
     assert.equal(c.applied, true);
     assert.equal(c.after.verdict, 'READY');
   });
 
   await runCase('the AFTER verdict is exactly runPreflight(outputBytes): nothing is decided in pageGeometry', async () => {
-    const res = await expand(small, 'center');
+    const res = await expand(small, 'keep-origin');
     const direct = await runPreflight(res.outputBytes, { userIntent: U });
     assert.equal(direct.verdict, res.after.verdict);
     assert.equal(direct.violations.length, res.after.violations.length);
@@ -342,15 +404,16 @@ async function main() {
       PDFPage.prototype[method] = original;
     }
   }
-  async function expectDetected(label, id, { bytes = small, mutate, method = 'setTrimBox', anchor = 'center' }) {
+  async function expectDetected(label, id, { bytes = small, mutate, method = 'setTrimBox', anchor = 'keep-origin' }) {
+    const opts = { research: anchor === 'center' };
     await runCase(`verifier detects: ${label} -> ${id}`, async () => {
       const copy = new Uint8Array(bytes);
-      const res = await withMutation(method, mutate, () => applyExpandPage(bytes, U, anchor));
+      const res = await withMutation(method, mutate, () => applyExpandPage(bytes, U, anchor, opts));
       assert.equal(res.ok, false, 'must fail closed');
       assert.equal(res.failure, id);
       assert.equal(res.outputBytes, null, 'no output when a check fails');
       assert.ok(same(bytes, copy), 'input bytes untouched');
-      const control = await applyExpandPage(bytes, U, anchor);
+      const control = await applyExpandPage(bytes, U, anchor, opts);
       assert.equal(control.ok, true, 'control: the unmutated apply passes every check');
     });
   }
@@ -379,7 +442,9 @@ async function main() {
   await expectDetected('document metadata changed', 'METADATA_CHANGED', { mutate: (p) => p.doc.setTitle('Tampered') });
   await expectDetected('page count changed', 'PAGE_COUNT_CHANGED', { mutate: (p) => p.doc.addPage([100, 100]) });
   await expectDetected('MediaBox differs from the plan', 'MEDIA_BOX_NOT_AS_PLANNED', { mutate: (p) => p.setMediaBox(0, 0, 500, 700) });
-  await expectDetected('MediaBox shifted by 3pt (wrong anchor offset)', 'MEDIA_BOX_NOT_AS_PLANNED', { mutate: (p) => p.setMediaBox(-15, -18, 432, 648) });
+  await expectDetected('MediaBox shifted by 3pt (wrong anchor offset)', 'MEDIA_BOX_NOT_AS_PLANNED', { mutate: (p) => p.setMediaBox(3, 0, 432, 648) });
+  await expectDetected('MediaBox origin pushed negative after planning', 'MEDIA_BOX_NOT_AS_PLANNED', { mutate: (p) => p.setMediaBox(-18, -18, 432, 648) });
+  await expectDetected('RESEARCH center: MediaBox shifted by 3pt (wrong anchor offset)', 'MEDIA_BOX_NOT_AS_PLANNED', { mutate: (p) => p.setMediaBox(-15, -18, 432, 648), anchor: 'center' });
   await expectDetected('TrimBox differs from the plan', 'TRIM_BOX_NOT_AS_PLANNED', { mutate: (p) => p.setTrimBox(0, 0, 400, 600), method: 'setTrimBox' });
   await expectDetected('an unplanned CropBox appears', 'CROP_BOX_NOT_AS_PLANNED', { mutate: (p) => p.setCropBox(0, 0, 300, 400) });
   // BleedBox/ArtBox are not in the allowed-change list, so the page-dictionary comparison catches them first
@@ -399,7 +464,7 @@ async function main() {
         const im = p.doc.context.lookup(xo.entries()[0][1]);
         im.contents = new Uint8Array([...im.contents].map((v, i) => (i === 0 ? v ^ 1 : v)));
       },
-      () => applyExpandPage(small, U, 'center')
+      () => applyExpandPage(small, U, 'keep-origin')
     );
     assert.equal(res.ok, false);
     assert.equal(res.failure, 'RESOURCES_CHANGED');

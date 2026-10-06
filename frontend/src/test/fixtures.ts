@@ -227,7 +227,6 @@ export const expandOffer = (over: Partial<ExpandOffer> = {}): ExpandOffer => ({
   target: { widthPt: 432, heightPt: 648 },
   current: { widthPt: 396, heightPt: 612 },
   previews: {
-    center: { addedPt: { left: 18, bottom: 18, right: 18, top: 18 } },
     'keep-origin': { addedPt: { left: 0, bottom: 0, right: 36, top: 36 } },
   },
   pageCount: 30,
@@ -244,7 +243,7 @@ export const EXPANDABLE = assessment({
   expand: expandOffer(),
 });
 
-export function expandApplied(anchor: 'center' | 'keep-origin', after: InspectionResult): NormalizationResult {
+export function expandApplied(anchor: 'keep-origin', after: InspectionResult): NormalizationResult {
   return {
     applied: true,
     assessment: EXPANDABLE,

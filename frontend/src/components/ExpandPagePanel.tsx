@@ -7,8 +7,8 @@ import { btnPrimary, btnSecondary, sectionTitle } from './ui';
 
 /**
  * "Expand page to the selected size": a user-initiated, page-box-only
- * operation. Nothing is pre-selected: the user must choose the anchor
- * (center | keep origin), review the change and tick an explicit
+ * operation. Nothing is pre-selected: the user must choose the (only)
+ * anchor -- keep the existing origin -- review the change and tick an explicit
  * confirmation before the button works. KDPSafe does not judge whether the
  * added white space suits the book -- it says so, and leaves that decision
  * to the user. Deliberately neutral styling (no success colours).
@@ -73,7 +73,6 @@ export function ExpandPagePanel({
 
       <fieldset className="mt-3 space-y-2">
         <legend className={sectionTitle}>{t('expandWhere')}</legend>
-        {option('center', t('expandAnchorCenter'), t('expandAnchorCenterBody', sideAmounts('center')))}
         {option('keep-origin', t('expandAnchorKeep'), t('expandAnchorKeepBody', sideAmounts('keep-origin')))}
       </fieldset>
 
