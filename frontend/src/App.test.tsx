@@ -865,3 +865,190 @@ describe('expand page (advanced repair #1)', () => {
     expect(within(panel()).getByRole('radio', { name: /Зберегти наявний початок координат/ })).toBeInTheDocument();
   });
 });
+
+describe('Phase 1 audit fixes', () => {
+  const stillBad = inspection({ verdict: 'NEEDS_ATTENTION', violations: [violation()] });
+
+  describe('H1: no Autofix for signed / encrypted PDFs', () => {
+    it.each([
+      ['signed', assessment({ signed: true }), /digitally signed/],
+      ['encrypted', assessment({ encrypted: true }), /encrypted/],
+    ])('%s: no Fix button, a clear explanation, no promise of a fix, the engine is never asked to fix', async (_n, geom, text) => {
+      const engine = makeEngine({ preflight: () => WITH_PLAN, assess: () => geom, verify: () => verifyResult({ before: WITH_PLAN }) });
+      const { user } = renderApp(engine);
+      await uploadAndRun(user, screen);
+      const notice = await screen.findByTestId('autofix-blocked');
+      expect(notice).toHaveTextContent('Automatic fix is not available');
+      expect(notice).toHaveTextContent(text);
+      expect(notice).toHaveTextContent(/Fix the listed items in your source file/);
+      expect(screen.queryByTestId('autofix-panel')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Fix automatically/ })).not.toBeInTheDocument();
+      expect(verdict()).not.toHaveTextContent(/can fix some of them safely/);
+      expect(verdict()).toHaveTextContent(/fixed in your source file/);
+      expect(engine.verifyAutofix).not.toHaveBeenCalled();
+    });
+
+    it('fails closed while / if the page-box analysis is unavailable: Autofix is not offered', async () => {
+      const engine = makeEngine({ preflight: () => WITH_PLAN, assess: () => Promise.reject(new Error('assess failed')) });
+      const { user } = renderApp(engine);
+      await uploadAndRun(user, screen);
+      await screen.findByTestId('verdict-card');
+      await new Promise((r) => setTimeout(r, 50));
+      expect(screen.queryByRole('button', { name: /Fix automatically/ })).not.toBeInTheDocument();
+      expect(verdict()).not.toHaveTextContent(/can fix some of them safely/);
+      expect(engine.verifyAutofix).not.toHaveBeenCalled();
+    });
+
+    it('an ordinary (unsigned, unencrypted) PDF still gets the fix offer and the fix promise', async () => {
+      const engine = makeEngine({ preflight: () => WITH_PLAN, assess: () => assessment() });
+      const { user } = renderApp(engine);
+      await uploadAndRun(user, screen);
+      expect(await screen.findByRole('button', { name: /Fix automatically and re-check/ })).toBeEnabled();
+      expect(verdict()).toHaveTextContent(/can fix some of them safely/);
+      expect(screen.queryByTestId('autofix-blocked')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('M2: the fix promise follows the shown result', () => {
+    it('after a fix attempt that is not verified, the verdict card no longer promises a fix', async () => {
+      const engine = makeEngine({
+        preflight: () => WITH_PLAN,
+        verify: () => verifyResult({ before: WITH_PLAN, after: stillBad, applied: [{ plan: WITH_PLAN.autofixPlans[0], patch: { before: { x: 0, y: 0 }, after: { x: 0, y: -4 }, dx: 0, dy: -4 } }], verification: 'MANUAL_REVIEW_REQUIRED', reasons: ['ISSUE_REMAINS'] }),
+      });
+      const { user } = renderApp(engine);
+      await uploadAndRun(user, screen);
+      expect(verdict()).toHaveTextContent(/can fix some of them safely/);
+      await user.click(await screen.findByRole('button', { name: /Fix automatically and re-check/ }));
+      await screen.findByTestId('verification-card');
+      expect(screen.queryByTestId('autofix-panel')).not.toBeInTheDocument();
+      expect(verdict()).not.toHaveTextContent(/can fix some of them safely/);
+      expect(verdict()).toHaveTextContent(/fixed in your source file/);
+    });
+  });
+
+  describe('M1: wording after a page repair', () => {
+    const expectPageRepairText = () => {
+      const card = screen.getByTestId('verification-card');
+      expect(card).toHaveTextContent('VERIFIED');
+      expect(card).toHaveTextContent(/changed this file's page geometry \(page boxes only/);
+      expect(card).toHaveTextContent(/checked the changed PDF again: it is READY/);
+      expect(card).not.toHaveTextContent(/No changes were needed/);
+      expect(card).not.toHaveTextContent(/already READY/);
+    };
+
+    it('Tier 1: says the page boxes were changed and the result was verified', async () => {
+      const engine = makeEngine({
+        preflight: (n) => (n === 1 ? UNRESOLVED_30 : READY),
+        assess: (n) => (n === 1 ? TIER1 : assessment()),
+        normalize: () => normalizationResult({ after: READY }),
+        verify: () => verifyResult({ before: READY }),
+      });
+      const { user } = renderApp(engine);
+      await uploadAndRun(user, screen);
+      await user.click(within(await screen.findByTestId('geometry-card')).getByRole('button', { name: 'Add TrimBox' }));
+      await screen.findByTestId('verification-card');
+      expectPageRepairText();
+    });
+
+    it('Expand: same wording', async () => {
+      const engine = makeEngine({
+        preflight: (n) => (n === 1 ? UNRESOLVED_30 : READY),
+        assess: (n) => (n === 1 ? EXPANDABLE : assessment()),
+        normalize: () => expandApplied('keep-origin', READY),
+        verify: () => verifyResult({ before: READY }),
+      });
+      const { user } = renderApp(engine);
+      await uploadAndRun(user, screen);
+      const panel = await screen.findByTestId('expand-panel');
+      await user.click(within(panel).getByRole('radio'));
+      await user.click(within(panel).getByRole('checkbox'));
+      await user.click(within(panel).getByRole('button', { name: 'Expand page' }));
+      await screen.findByTestId('verification-card');
+      expectPageRepairText();
+    });
+
+    it('an untouched READY file keeps the original "already READY, no changes" wording', async () => {
+      const engine = makeEngine({ preflight: () => READY, verify: () => verifyResult({ before: READY }) });
+      const { user } = renderApp(engine);
+      await uploadAndRun(user, screen);
+      const card = await screen.findByTestId('verification-card');
+      expect(card).toHaveTextContent(/already READY\. No changes were needed/);
+    });
+
+    it('Ukrainian wording', async () => {
+      const engine = makeEngine({
+        preflight: (n) => (n === 1 ? UNRESOLVED_30 : READY),
+        assess: (n) => (n === 1 ? TIER1 : assessment()),
+        normalize: () => normalizationResult({ after: READY }),
+        verify: () => verifyResult({ before: READY }),
+      });
+      const { user } = renderApp(engine, 'uk');
+      await user.upload(screen.getByTestId('file-input'), pdfFile());
+      await user.type(await screen.findByLabelText(/Ширина/), '6');
+      await user.type(screen.getByLabelText(/Висота/), '9');
+      await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
+      await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
+      await user.click(within(await screen.findByTestId('geometry-card')).getByRole('button', { name: 'Додати TrimBox' }));
+      const card = await screen.findByTestId('verification-card');
+      expect(card).toHaveTextContent(/змінив геометрію сторінок/);
+      expect(card).not.toHaveTextContent(/Змін не потрібно|не потрібно було/);
+    });
+  });
+
+  describe('H3: page count outside the 24–828 margin table', () => {
+    const unresolvedFor = (n: number) => inspection({ ...UNRESOLVED_30, document: { ...UNRESOLVED_30.document, pageCount: n } });
+
+    it.each([10, 23, 829, 1000])('%i pages: a dedicated notice and row text explain the real cause', async (n) => {
+      const { user } = renderApp(makeEngine({ preflight: () => unresolvedFor(n), assess: () => assessment() }));
+      await uploadAndRun(user, screen);
+      const notice = await screen.findByTestId('page-count-range');
+      expect(notice).toHaveTextContent('Page count is outside the margin table');
+      expect(notice).toHaveTextContent(`This document has ${n} pages`);
+      expect(notice).toHaveTextContent(/covers 24–828 pages/);
+      expect(notice).toHaveTextContent(/does not mean the PDF is wrong/);
+      expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+      expect(screen.getByTestId('issue-list')).toHaveTextContent(new RegExp(`this document has ${n} pages, outside the 24–828 page range`));
+      expect(screen.getByTestId('issue-list')).not.toHaveTextContent(/page geometry is not fully known/);
+    });
+
+    it.each([24, 30, 828])('%i pages (in range): no page-count notice, the generic text stays', async (n) => {
+      const { user } = renderApp(makeEngine({ preflight: () => unresolvedFor(n), assess: () => assessment() }));
+      await uploadAndRun(user, screen);
+      await screen.findByTestId('issue-list');
+      expect(screen.queryByTestId('page-count-range')).not.toBeInTheDocument();
+      expect(screen.getByTestId('issue-list')).toHaveTextContent(/page geometry is not fully known/);
+    });
+
+    it('is available in Ukrainian', async () => {
+      const { user } = renderApp(makeEngine({ preflight: () => unresolvedFor(10), assess: () => assessment() }), 'uk');
+      await user.upload(screen.getByTestId('file-input'), pdfFile());
+      await user.type(await screen.findByLabelText(/Ширина/), '6');
+      await user.type(screen.getByLabelText(/Висота/), '9');
+      await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
+      await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
+      expect(await screen.findByTestId('page-count-range')).toHaveTextContent('Кількість сторінок поза таблицею полів');
+    });
+  });
+
+  describe('M4: neutral verdict label', () => {
+    it('the verdict region is labelled "Check result" and no label promises KDP safety', async () => {
+      const { user } = renderApp(makeEngine({ preflight: () => READY, verify: () => verifyResult({ before: READY }) }));
+      await uploadAndRun(user, screen);
+      await screen.findByTestId('verification-card');
+      expect(verdict()).toHaveAttribute('aria-label', 'Check result');
+      expect(document.body.innerHTML).not.toMatch(/safe for KDP/i);
+    });
+
+    it('Ukrainian label is neutral too', async () => {
+      const { user } = renderApp(makeEngine({ preflight: () => READY, verify: () => verifyResult({ before: READY }) }), 'uk');
+      await user.upload(screen.getByTestId('file-input'), pdfFile());
+      await user.type(await screen.findByLabelText(/Ширина/), '6');
+      await user.type(screen.getByLabelText(/Висота/), '9');
+      await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
+      await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
+      await screen.findByTestId('verdict-card');
+      expect(verdict()).toHaveAttribute('aria-label', 'Результат перевірки');
+      expect(document.body.innerHTML).not.toMatch(/безпечний цей PDF для KDP/i);
+    });
+  });
+});

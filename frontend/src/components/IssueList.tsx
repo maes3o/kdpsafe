@@ -3,7 +3,7 @@ import type { BBoxPt, InspectionResult, ManualReviewEntry, PageGeometryAssessmen
 import { formatPoints, objectLabel, sideLabel, sidesLabel } from '../i18n/labels';
 import { useUnit } from '../units/context';
 import type { StringKey } from '../i18n/strings';
-import { groupByPage, isAmbiguous, manualDisplayItems, outsideTrimGroup, OUTSIDE_TRIM_GROUP_ID, violationId, type ManualDisplayItem, type OutsideTrimGroup } from '../workspace/issues';
+import { groupByPage, isAmbiguous, manualDisplayItems, outsideTrimGroup, pageCountOutsideMarginTable, OUTSIDE_TRIM_GROUP_ID, violationId, type ManualDisplayItem, type OutsideTrimGroup } from '../workspace/issues';
 import { formatPageRanges } from '../i18n/labels';
 import { StatusIcon } from './StatusIcon';
 import { sectionTitle } from './ui';
@@ -103,11 +103,13 @@ function ManualRow({
   active,
   onFocus,
   trimBoxMissing,
+  pageCount,
 }: {
   item: ManualDisplayItem;
   active: boolean;
   onFocus: FocusIssue;
   trimBoxMissing: boolean;
+  pageCount: number;
 }) {
   const { t } = useI18n();
   const { formatPt } = useUnit();
@@ -115,9 +117,11 @@ function ManualRow({
   // The engine's generic "unresolved" reason is explained by the missing
   // TrimBox when that is the document-level cause (see the page-size card).
   const text =
-    e.reason === 'HORIZONTAL_GEOMETRY_UNRESOLVED' && trimBoxMissing
-      ? t('mrUnresolvedNoTrimBox')
-      : t(MANUAL_TEXT[e.reason], { sides: sidesLabel(t, e.sides) });
+    e.reason === 'HORIZONTAL_GEOMETRY_UNRESOLVED' && pageCountOutsideMarginTable(pageCount)
+      ? t('mrUnresolvedPageCount', { sides: sidesLabel(t, e.sides), n: pageCount })
+      : e.reason === 'HORIZONTAL_GEOMETRY_UNRESOLVED' && trimBoxMissing
+        ? t('mrUnresolvedNoTrimBox')
+        : t(MANUAL_TEXT[e.reason], { sides: sidesLabel(t, e.sides) });
   return (
     <RowButton
       active={active}
@@ -185,14 +189,14 @@ export function IssueList({ inspection, geometry, afterFix, activeId, onFocus }:
           {groups.length > 0 && (
             <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-bg shadow-card">
               {groups.map((g) => (
-                <ManualRow key={g.id} item={g} active={g.id === activeId} onFocus={onFocus} trimBoxMissing={trimBoxMissing} />
+                <ManualRow key={g.id} item={g} active={g.id === activeId} onFocus={onFocus} trimBoxMissing={trimBoxMissing} pageCount={inspection.document.pageCount} />
               ))}
             </ul>
           )}
           {groupByPage(manual).map((g, gi) => (
             <PageGroup key={g.pageIndex} page={g.pageIndex + 1} count={g.items.length} defaultOpen={openAll || gi === 0}>
               {g.items.map((it) => (
-                <ManualRow key={it.id} item={it.m} active={it.id === activeId} onFocus={onFocus} trimBoxMissing={trimBoxMissing} />
+                <ManualRow key={it.id} item={it.m} active={it.id === activeId} onFocus={onFocus} trimBoxMissing={trimBoxMissing} pageCount={inspection.document.pageCount} />
               ))}
             </PageGroup>
           ))}

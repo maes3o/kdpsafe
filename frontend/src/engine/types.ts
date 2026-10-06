@@ -288,22 +288,17 @@ export interface UserIntent {
   readingDirection?: 'ltr' | 'rtl';
 }
 
-export interface PageContext {
-  pageCount?: number;
-  /** Required alongside readingDirection to reach 'exact' horizontal
-   * resolution for THIS page (odd/even parity) -- see lib/zones.js. */
-  pageNumber?: number;
-}
-
 /** The only anchor available to the product: the page keeps its existing origin
  * (lower-left corner) and space is added on the right and at the top. A centered
  * variant exists in the engine for research only and is never exposed (it needs a
  * negative MediaBox origin, which is unsupported). */
 export type ExpandAnchor = 'keep-origin';
 
+/** Everything the frontend may ask of the engine. There is deliberately NO page
+ * count / page context: the engine derives it from the PDF itself, and the worker
+ * never forwards anything beyond these fields. */
 export interface PreflightOptions {
   userIntent: UserIntent;
-  pageContext?: PageContext;
   /** normalizePageGeometry only: run the "Expand page" operation instead of
    * the Tier 1/2 plan. Both fields are required by the engine; it fails
    * closed without an explicit anchor and `confirmed: true`. */

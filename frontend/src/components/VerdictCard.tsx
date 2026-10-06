@@ -49,7 +49,7 @@ export function VerdictCard({
   return (
     <section
       role="status"
-      aria-label={t('questionIsSafe')}
+      aria-label={t('verdictRegionLabel')}
       data-testid="verdict-card"
       data-verdict={verdict}
       className={`rounded-2xl border p-4 shadow-card ${tone.border} ${tone.soft}`}

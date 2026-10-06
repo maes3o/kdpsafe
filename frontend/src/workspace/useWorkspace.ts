@@ -276,8 +276,10 @@ export function useWorkspace(createEngine: () => EngineApi) {
 
   /** Explicit user approval of the engine's autofix plans. */
   const applyFix = useCallback(async () => {
-    const { bytes, intent, inspection } = stateRef.current;
+    const { bytes, intent, inspection, geometry } = stateRef.current;
     if (!bytes || !intent || !inspection || applyablePlans(inspection).length === 0) return;
+    // Defense in depth (the panel is not rendered either): never rewrite a signed or encrypted PDF.
+    if (!geometry || geometry.signed || geometry.encrypted) return;
     const mySeq = ++seq.current;
     patch({ busy: 'autofix', failure: null });
     try {

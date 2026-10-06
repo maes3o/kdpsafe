@@ -4,7 +4,7 @@ import type { AutofixPlan, BBoxPt, UserIntent } from './engine/types';
 import { useI18n } from './i18n/context';
 import { useUnit } from './units/context';
 import { useWorkspace } from './workspace/useWorkspace';
-import { ambiguousEntries, applyablePlans, buildMarks, manualDisplayItems, planId } from './workspace/issues';
+import { ambiguousEntries, applyablePlans, buildMarks, manualDisplayItems, planId, unresolvedBecauseOfPageCount } from './workspace/issues';
 import { baseName, buildReport, downloadBlob } from './workspace/report';
 import { EmptyState } from './components/EmptyState';
 import { BusyState } from './components/BusyState';
@@ -22,6 +22,7 @@ import { AutofixPanel } from './components/AutofixPanel';
 import { IssueList } from './components/IssueList';
 import { DownloadPanel } from './components/DownloadPanel';
 import { TechnicalDetails } from './components/TechnicalDetails';
+import { AutofixBlockedNotice, PageCountRangeNotice } from './components/Notices';
 import { ErrorNotice } from './components/ErrorNotice';
 import { PdfViewer } from './components/viewer/PdfViewer';
 import type { ViewerFocus, ViewerMark } from './components/viewer/types';
@@ -101,7 +102,12 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
   }
   if (!file) return <div className="mx-auto w-full max-w-md p-6"><BusyState title={t('readingFile')} /></div>;
 
-  const applyable = shown ? applyablePlans(inspection!) : [];
+  // Fixes are counted from the result currently SHOWN (never the original after
+  // a fix attempt), and Autofix is never offered for signed/encrypted PDFs or
+  // before the page-box analysis (which reports signed/encrypted) is available.
+  const applyable = shown ? applyablePlans(shown) : [];
+  const autofixBlock = state.geometry?.signed ? 'signed' : state.geometry?.encrypted ? 'encrypted' : null;
+  const autofixAllowed = !!state.geometry && autofixBlock === null;
   const ambiguous = shown ? ambiguousEntries(shown) : [];
   const working = busy === 'preflight' || busy === 'autofix' || busy === 'normalizing';
   const canDownloadPdf = fix?.verification === 'VERIFIED';
@@ -166,7 +172,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
               verdict={shown.verdict}
               confirmedCount={shown.violations.length}
               manualCount={manualCount}
-              fixableCount={applyable.length}
+              fixableCount={!fix && autofixAllowed ? applyable.length : 0}
             >
               {canDownloadPdf && (
                 <button type="button" className={`${btnDark} w-full`} onClick={downloadPdf}>
@@ -183,7 +189,9 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
             </VerdictCard>
 
             {busy === 'verifying' && <BusyState title={t('verifying')} />}
-            {fix && <VerificationCard fix={fix} onDiscard={ws.discardFix} />}
+            {fix && <VerificationCard fix={fix} onDiscard={ws.discardFix} pageRepair={!!state.normalization} />}
+            {!fix && autofixBlock && applyable.length > 0 && <AutofixBlockedNotice reason={autofixBlock} />}
+            {unresolvedBecauseOfPageCount(shown) && <PageCountRangeNotice pageCount={shown.document.pageCount} />}
             {(failure?.stage === 'autofix' || failure?.stage === 'verify' || failure?.stage === 'normalize') && (
               <ErrorNotice failure={failure} onDismiss={ws.dismissFailure} />
             )}
@@ -209,7 +217,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
               />
             )}
 
-            {!fix && applyable.length > 0 && (
+            {!fix && autofixAllowed && applyable.length > 0 && (
               <AutofixPanel
                 plans={inspection.autofixPlans}
                 activeId={activePlanIndex >= 0 ? planId(activePlanIndex) : null}

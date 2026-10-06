@@ -11,3 +11,14 @@ export function sanitizeExpandRequest(req: unknown): { anchor: ExpandAnchor | nu
   const r = req as { anchor?: unknown; confirmed?: unknown };
   return { anchor: r.anchor === 'keep-origin' ? 'keep-origin' : null, confirmed: r.confirmed === true };
 }
+
+/**
+ * The ONLY options the worker hands to the engine: the user's intent and the
+ * sanitized Expand request. Everything else a caller might add -- notably
+ * `pageContext` (which would let a request choose the page count and with it
+ * the KDP gutter-margin row, changing a verdict) -- is dropped here.
+ */
+export function buildEngineOptions(options: unknown): { userIntent: unknown; expandPage: ReturnType<typeof sanitizeExpandRequest> } {
+  const o = (options && typeof options === 'object' ? options : {}) as { userIntent?: unknown; expandPage?: unknown };
+  return { userIntent: o.userIntent, expandPage: sanitizeExpandRequest(o.expandPage) };
+}

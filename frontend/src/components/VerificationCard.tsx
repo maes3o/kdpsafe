@@ -7,7 +7,7 @@ import { btnSecondary, GLYPH, TONE } from './ui';
  * the document `verdict` (READY ...): VERIFIED comes only from
  * verifyAutofix(), including the intentional `after: null` case for an
  * already-READY document. */
-export function VerificationCard({ fix, onDiscard }: { fix: VerifyAutofixResult; onDiscard: () => void }) {
+export function VerificationCard({ fix, onDiscard, pageRepair = false }: { fix: VerifyAutofixResult; onDiscard: () => void; pageRepair?: boolean }) {
   const { t } = useI18n();
   const verified = fix.verification === 'VERIFIED';
   const tone = TONE[verified ? 'ready' : 'attention'];
@@ -28,7 +28,7 @@ export function VerificationCard({ fix, onDiscard }: { fix: VerifyAutofixResult;
       </p>
 
       {verified ? (
-        <p className="mt-1.5 text-sm">{fix.after === null ? t('verifiedAlreadyReady') : t('verifiedAfterFix')}</p>
+        <p className="mt-1.5 text-sm">{fix.after === null ? t(pageRepair ? 'verifiedAfterPageRepair' : 'verifiedAlreadyReady') : t('verifiedAfterFix')}</p>
       ) : (
         <>
           <p className="mt-1.5 text-sm">{t('notVerifiedBody')}</p>

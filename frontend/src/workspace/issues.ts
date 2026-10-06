@@ -179,3 +179,22 @@ export function actualTrimSizePt(geometry: PageGeometryAssessment): { widthPt: n
   if (sizes.size === 0) return null;
   return sizes.size === 1 ? [...sizes.values()][0] : 'varies';
 }
+
+// ---- page count vs the inside-margin (gutter) table ----
+
+/** Page range covered by the KDP inside-margin table the engine uses
+ * (mirrors lib/zones.js; display logic only -- the engine decides the verdict). */
+export const MARGIN_TABLE_PAGES = { min: 24, max: 828 } as const;
+
+export function pageCountOutsideMarginTable(pageCount: number): boolean {
+  return pageCount < MARGIN_TABLE_PAGES.min || pageCount > MARGIN_TABLE_PAGES.max;
+}
+
+/** True when the engine reported unresolved left/right geometry AND the page
+ * count is outside the margin table (the dedicated explanation applies). */
+export function unresolvedBecauseOfPageCount(result: InspectionResult): boolean {
+  return (
+    pageCountOutsideMarginTable(result.document.pageCount) &&
+    result.categories.margins.manualReview.some((e) => e.reason === 'HORIZONTAL_GEOMETRY_UNRESOLVED')
+  );
+}

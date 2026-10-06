@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeExpandRequest } from './expandRequest';
+import { buildEngineOptions, sanitizeExpandRequest } from './expandRequest';
 
 describe('sanitizeExpandRequest (what the worker may forward to the engine)', () => {
   it('forwards only keep-origin + the confirmation flag', () => {
@@ -18,5 +18,26 @@ describe('sanitizeExpandRequest (what the worker may forward to the engine)', ()
     expect(sanitizeExpandRequest(undefined)).toBeUndefined();
     expect(sanitizeExpandRequest(null)).toBeUndefined();
     expect(sanitizeExpandRequest('center')).toBeUndefined();
+  });
+});
+
+describe('buildEngineOptions (the worker -> engine boundary)', () => {
+  const intent = { trimSize: { widthIn: 6, heightIn: 9 }, bleed: false };
+
+  it('never forwards pageContext (a caller cannot choose the page count / gutter row)', () => {
+    const out = buildEngineOptions({ userIntent: intent, pageContext: { pageCount: 900, pageNumber: 3 } });
+    expect(out).not.toHaveProperty('pageContext');
+    expect(Object.keys(out).sort()).toEqual(['expandPage', 'userIntent']);
+    expect(out.userIntent).toBe(intent);
+  });
+
+  it('forwards only userIntent and the sanitized expand request', () => {
+    const out = buildEngineOptions({ userIntent: intent, pageContext: { pageCount: 1 }, expandPage: { anchor: 'center', confirmed: true, research: true }, extra: true });
+    expect(out).toEqual({ userIntent: intent, expandPage: { anchor: null, confirmed: true } });
+  });
+
+  it('tolerates garbage', () => {
+    expect(buildEngineOptions(undefined)).toEqual({ userIntent: undefined, expandPage: undefined });
+    expect(buildEngineOptions('x')).toEqual({ userIntent: undefined, expandPage: undefined });
   });
 });
