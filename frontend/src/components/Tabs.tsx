@@ -9,7 +9,7 @@ export interface TabDef<T extends string> {
 /** Underlined tab strip (role=tablist). Panels are rendered by the caller. */
 export function Tabs<T extends string>({ tabs, active, onChange, label }: { tabs: TabDef<T>[]; active: T; onChange: (id: T) => void; label: string }) {
   return (
-    <div role="tablist" aria-label={label} className="flex border-b border-border">
+    <div role="tablist" aria-label={label} className="flex gap-1 rounded-2xl bg-bg-hover p-1">
       {tabs.map((tab) => {
         const selected = tab.id === active;
         return (
@@ -21,8 +21,8 @@ export function Tabs<T extends string>({ tabs, active, onChange, label }: { tabs
             aria-selected={selected}
             aria-controls={`panel-${tab.id}`}
             onClick={() => onChange(tab.id)}
-            className={`-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-semibold ${
-              selected ? 'border-accent text-accent' : 'border-transparent text-ink-muted hover:text-ink'
+            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-sm ${
+              selected ? 'crop-corner bg-bg font-bold text-accent shadow-sm' : 'font-medium text-ink-muted hover:text-ink'
             }`}
           >
             {tab.label}

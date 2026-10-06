@@ -3,24 +3,29 @@ import { useI18n } from '../i18n/context';
 import { IconArrow, IconCheckDoc, IconUpload, IconWand } from './icons';
 import { btnPrimary } from './ui';
 
-/** Decorative: a tilted PDF page with a check badge and corner marks. */
+/** Decorative: a PDF page with a folded corner and a dashed safe area, held
+ * by crop-mark brackets (the KDPSafe mark, scaled up). */
 function Hero() {
   return (
-    <div className="hero-glow relative mx-auto flex h-64 w-full max-w-sm items-center justify-center" aria-hidden="true">
-      {['left-6 top-6', 'right-6 top-6', 'left-6 bottom-6', 'right-6 bottom-6'].map((pos) => (
-        <span key={pos} className={`absolute ${pos} text-xl font-light text-accent/70`}>
-          +
-        </span>
-      ))}
-      <div className="relative -rotate-6 rounded-2xl border border-border bg-bg p-5 shadow-card">
-        <div className="flex h-36 w-28 flex-col items-center justify-center rounded-lg border border-border bg-bg-panel">
-          <span className="text-2xl font-extrabold tracking-tight text-accent">PDF</span>
-          <span className="mt-1 text-[10px] text-ink-muted">KDP</span>
-        </div>
-        <span className="absolute -bottom-3 -right-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-accent text-lg font-bold text-accent-ink shadow-card ring-4 ring-bg">
-          ✓
-        </span>
-      </div>
+    <div className="hero-glow relative mx-auto flex h-72 w-full max-w-sm items-center justify-center text-ink-muted" aria-hidden="true">
+      <svg viewBox="0 0 240 280" className="h-full w-auto">
+        <g transform="rotate(-5 120 140)">
+          <g fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" opacity="0.7">
+            <path d="M24 70V40a14 14 0 0 1 14-14h30" />
+            <path d="M172 26h30a14 14 0 0 1 14 14v30" />
+            <path d="M216 210v30a14 14 0 0 1-14 14h-30" />
+            <path d="M68 254H38a14 14 0 0 1-14-14v-30" />
+          </g>
+          <path d="M56 52h86l42 42v134H56z" className="fill-bg stroke-border-strong" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M142 52v42h42" className="fill-accent-soft stroke-border-strong" strokeWidth="1.5" strokeLinejoin="round" />
+          <rect x="72" y="112" width="96" height="100" rx="3" fill="none" className="stroke-accent" strokeWidth="1.6" strokeDasharray="4 5" />
+          <text x="120" y="170" textAnchor="middle" className="fill-accent" fontSize="30" fontWeight="800" fontFamily="Inter Variable, Inter, sans-serif">
+            PDF
+          </text>
+        </g>
+        <circle cx="178" cy="226" r="19" className="fill-accent stroke-bg" strokeWidth="4" />
+        <path d="M169 226l6 6 11-12" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     </div>
   );
 }

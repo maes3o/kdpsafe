@@ -256,6 +256,24 @@ const en = {
   themeToggle: 'Theme',
   progressTitle: 'Checking your PDF…',
   openSizeInputs: 'Enter a custom size',
+
+  // Verdict hierarchy
+  verdictReadyHeadline: 'No problems found.',
+  verdictReadyScope: 'Checked: margins and bleed.',
+  problemsUnit_one: 'problem found',
+  problemsUnit_other: 'problems found',
+  manualUnit_one: 'item needs your attention',
+  manualUnit_other: 'items need your attention',
+  verdictManualSafe: 'KDPSafe cannot safely confirm these automatically.',
+  verdictManualNote: 'This does not mean the PDF is wrong.',
+  verdictAttentionFixable: 'KDPSafe can fix some of them safely and shows exactly what changes before you approve.',
+  verdictAttentionSource: 'They need to be fixed in your source file.',
+  alsoConfirmed: 'Also confirmed problems: {n}',
+  backToResults: 'Back to results',
+  problemsUnit_few: 'problems found',
+  problemsUnit_many: 'problems found',
+  manualUnit_few: 'items need your attention',
+  manualUnit_many: 'items need your attention',
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -494,6 +512,23 @@ const uk: Record<StringKey, string> = {
   themeToggle: 'Тема',
   progressTitle: 'Перевіряємо ваш PDF…',
   openSizeInputs: 'Ввести власний розмір',
+
+  verdictReadyHeadline: 'Проблем не знайдено.',
+  verdictReadyScope: 'Перевірено: поля та виліт.',
+  problemsUnit_one: 'проблема знайдена',
+  problemsUnit_few: 'проблеми знайдено',
+  problemsUnit_many: 'проблем знайдено',
+  problemsUnit_other: 'проблеми знайдено',
+  manualUnit_one: 'пункт потребує вашої уваги',
+  manualUnit_few: 'пункти потребують вашої уваги',
+  manualUnit_many: 'пунктів потребують вашої уваги',
+  manualUnit_other: 'пункти потребують вашої уваги',
+  verdictManualSafe: 'KDPSafe не може безпечно підтвердити ці параметри автоматично.',
+  verdictManualNote: 'Це не означає, що PDF неправильний.',
+  verdictAttentionFixable: 'KDPSafe може безпечно виправити частину з них і покаже, що саме зміниться, перш ніж ви підтвердите.',
+  verdictAttentionSource: 'Їх потрібно виправити у вихідному файлі.',
+  alsoConfirmed: 'Також підтверджених проблем: {n}',
+  backToResults: 'До результатів',
 };
 
 export const STRINGS: Record<Locale, Record<StringKey, string>> = { en, uk };

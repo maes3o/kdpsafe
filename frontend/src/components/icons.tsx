@@ -70,12 +70,28 @@ export function PdfBadge() {
   );
 }
 
-export function Logo({ size = 28 }: { size?: number }) {
+/**
+ * The KDPSafe mark: crop-mark brackets (the page edge) around a page with a
+ * folded corner (the PDF / safe area). Brackets follow the text colour; the
+ * page is brand violet. Works standalone from 16 px up.
+ */
+export function Mark({ size = 28, className = '' }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" className="fill-ink" />
-      <path d="M9 8h6l8 8-8 8H9z" className="fill-bg" opacity="0.95" />
-      <path d="M15 8h3l6 6v4l-6 6h-3l8-8z" className="fill-accent" />
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className={className}>
+      <g fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 11V8a3 3 0 0 1 3-3h3" />
+        <path d="M21 5h3a3 3 0 0 1 3 3v3" />
+        <path d="M27 21v3a3 3 0 0 1-3 3h-3" />
+        <path d="M11 27H8a3 3 0 0 1-3-3v-3" />
+      </g>
+      <path d="M10.5 9.5h7l4 4v9h-11z" className="fill-accent" />
+      <path d="M17.5 9.5v4h4" fill="none" className="stroke-bg" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
 }
+
+export const IconBack = ({ size }: { size?: number }) => (
+  <Svg size={size}>
+    <path d="M19 12H5M11 6l-6 6 6 6" />
+  </Svg>
+);

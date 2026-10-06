@@ -1,7 +1,7 @@
 import { useI18n } from '../i18n/context';
 import { useTheme } from '../theme/context';
 import type { Locale } from '../i18n/strings';
-import { IconMoon, IconSun, Logo } from './icons';
+import { IconMoon, IconSun, Mark } from './icons';
 
 const LOCALES: { id: Locale; label: string }[] = [
   { id: 'uk', label: 'UA' },
@@ -14,7 +14,7 @@ export function Header() {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-bg px-4">
       <div className="flex items-center gap-2.5">
-        <Logo />
+        <Mark size={30} className="text-ink" />
         <h1 className="text-lg font-bold tracking-tight">{t('appTitle')}</h1>
       </div>
       <div className="flex items-center gap-2">

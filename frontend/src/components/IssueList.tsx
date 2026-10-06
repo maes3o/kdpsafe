@@ -28,7 +28,7 @@ function PageGroup({ page, count, defaultOpen, children }: { page: number; count
   const { t } = useI18n();
   return (
     <details open={defaultOpen} className="overflow-hidden rounded-2xl border border-border bg-bg shadow-card">
-      <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-medium">
+      <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5 text-sm font-bold">
         <span>{t('pageNumber', { page })}</span>
         <span className="text-xs font-normal text-ink-muted">{t('pageGroupCount', { n: count })}</span>
       </summary>
@@ -37,7 +37,7 @@ function PageGroup({ page, count, defaultOpen, children }: { page: number; count
   );
 }
 
-function RowButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function RowButton({ active, onClick, children, tech }: { active: boolean; onClick: () => void; children: React.ReactNode; tech?: React.ReactNode }) {
   const { t } = useI18n();
   return (
     <li>
@@ -48,7 +48,8 @@ function RowButton({ active, onClick, children }: { active: boolean; onClick: ()
         className={`block w-full px-3 py-2.5 text-left hover:bg-bg-hover ${active ? 'bg-bg-hover' : ''}`}
       >
         {children}
-        <span className="mt-1 block text-xs font-semibold text-accent">{t("showInPdf")} →</span>
+        <span className="mt-1.5 block text-sm font-semibold text-accent">{t('showInPdf')} →</span>
+        {tech && <span className="mt-1 block font-mono text-[11px] text-ink-muted/80">{tech}</span>}
       </button>
     </li>
   );
@@ -64,12 +65,13 @@ function ViolationRow({ v, id, active, onFocus }: { v: Violation; id: string; ac
     side: sideLabel(t, v.side),
   });
   return (
-    <RowButton active={active} onClick={() => onFocus(id, v.pageIndex, v.visibleBBoxPt)}>
+    <RowButton
+      active={active}
+      onClick={() => onFocus(id, v.pageIndex, v.visibleBBoxPt)}
+      tech={`${v.violation} · ${v.side} · ${formatPoints(v.amountPt, formatNumber, t('pointsShort'))}`}
+    >
       <StatusIcon tone={v.severity === 'error' ? 'error' : 'attention'} label={v.severity === 'error' ? t('severityError') : t('severityWarning')} className="text-sm" />
       <span className="mt-1 block text-sm">{text}</span>
-      <span className="mt-0.5 block font-mono text-xs text-ink-muted">
-        {v.violation} · {v.side} · {amount} · {formatPoints(v.amountPt, formatNumber, t('pointsShort'))}
-      </span>
     </RowButton>
   );
 }
@@ -78,13 +80,13 @@ function ManualRow({ e, id, active, onFocus }: { e: ManualReviewEntry; id: strin
   const { t } = useI18n();
   const { formatPt } = useUnit();
   return (
-    <RowButton active={active} onClick={() => onFocus(id, e.pageIndex, isAmbiguous(e) ? e.visibleBBoxPt : undefined)}>
-      <StatusIcon tone="review" label={t('verdictManualReview')} className="text-sm" />
+    <RowButton
+      active={active}
+      onClick={() => onFocus(id, e.pageIndex, isAmbiguous(e) ? e.visibleBBoxPt : undefined)}
+      tech={`${e.reason}${e.maxAmountPt !== null ? ` · ${t('mrMaxAmount', { amount: formatPt(e.maxAmountPt) })}` : ''}`}
+    >
+      <StatusIcon tone="review" label={t('verdictManualReview')} className="text-sm font-bold uppercase tracking-wider" />
       <span className="mt-1 block text-sm">{t(MANUAL_TEXT[e.reason], { sides: sidesLabel(t, e.sides) })}</span>
-      <span className="mt-0.5 block font-mono text-xs text-ink-muted">
-        {e.reason}
-        {e.maxAmountPt !== null && ` · ${t('mrMaxAmount', { amount: formatPt(e.maxAmountPt) })}`}
-      </span>
     </RowButton>
   );
 }

@@ -165,3 +165,31 @@ body {
 .spin-ring {
   animation: kdp-spin 1.1s linear infinite;
 }
+
+/* Small crop-mark corners on the active tab (top-left / bottom-right). */
+.crop-corner {
+  position: relative;
+}
+.crop-corner::before,
+.crop-corner::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 0 solid var(--color-accent);
+  pointer-events: none;
+}
+.crop-corner::before {
+  top: 3px;
+  left: 3px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  border-top-left-radius: 3px;
+}
+.crop-corner::after {
+  bottom: 3px;
+  right: 3px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+  border-bottom-right-radius: 3px;
+}

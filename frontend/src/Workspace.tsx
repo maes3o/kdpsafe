@@ -12,7 +12,7 @@ import { DocumentStats, GeometryDetails } from './components/DocumentSummary';
 import { FileCard } from './components/FileCard';
 import { TabPanel, Tabs } from './components/Tabs';
 import { useMediaQuery } from './hooks';
-import { IconArrowDown, IconDownload } from './components/icons';
+import { IconArrowDown, IconBack, IconDownload } from './components/icons';
 import { SettingsForm } from './components/SettingsForm';
 import { VerdictCard } from './components/VerdictCard';
 import { VerificationCard } from './components/VerificationCard';
@@ -51,6 +51,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
   const [tab, setTab] = useState<'issues' | 'preview' | 'details'>('issues');
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const nonce = useRef(0);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const viewerBox = useRef<HTMLDivElement>(null);
 
   // What the viewer shows: the original, or the engine-produced fixed bytes
@@ -136,7 +137,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(380px,460px)_minmax(0,1fr)] lg:overflow-hidden">
-      <aside aria-label="KDPSafe" className="order-1 min-h-0 space-y-4 bg-bg-panel p-4 lg:overflow-y-auto">
+      <aside aria-label="KDPSafe" className={`order-1 min-h-0 space-y-4 bg-bg-panel p-4 lg:overflow-y-auto ${viewerOnNarrow ? 'hidden' : ''}`}>
         <FileCard file={file} pageCount={state.docInfo?.pageCount ?? inspection?.document.pageCount ?? null} onRemove={ws.reset} />
 
         <details open={!intent} className={card}>
@@ -162,6 +163,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
               verdict={shown.verdict}
               confirmedCount={shown.violations.length}
               manualCount={shown.categories.margins.manualReview.length}
+              fixableCount={applyable.length}
             >
               {canDownloadPdf && (
                 <button type="button" className={`${btnDark} w-full`} onClick={downloadPdf}>
@@ -203,6 +205,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
               />
             )}
 
+            <div ref={tabsRef} className="scroll-mt-16">
             <Tabs
               label={t('tabIssues')}
               active={activeTab}
@@ -213,6 +216,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
                 { id: 'details', label: t('tabDetails') },
               ]}
             />
+            </div>
 
             {activeTab === 'issues' && (
               <TabPanel id="issues">
@@ -236,8 +240,23 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
       <div
         ref={viewerBox}
         id="panel-preview"
-        className={`order-2 min-h-0 border-t border-border lg:block lg:border-l lg:border-t-0 ${viewerOnNarrow ? 'block h-[75vh]' : 'hidden'}`}
+        className={`order-2 min-h-0 flex-col border-t border-border lg:flex lg:h-auto lg:border-l lg:border-t-0 ${viewerOnNarrow ? 'flex h-[calc(100dvh-3.5rem)]' : 'hidden'}`}
       >
+        {/* Narrow screens: an explicit way back to the results. */}
+        <div className="flex shrink-0 items-center border-b border-border bg-bg px-3 py-1.5 lg:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setTab('issues');
+              requestAnimationFrame(() => tabsRef.current?.scrollIntoView?.({ block: 'start' }));
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-accent hover:bg-accent-soft"
+          >
+            <IconBack size={18} />
+            {t('backToResults')}
+          </button>
+        </div>
+        <div className="min-h-0 flex-1">
         <PdfViewer
           pdfBytes={viewBytes}
           inspection={viewInspection}
@@ -247,6 +266,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
           onDocumentInfo={fixedView ? undefined : ws.setDocInfo}
           toolbarExtra={toolbarExtra}
         />
+        </div>
       </div>
     </div>
   );

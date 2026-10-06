@@ -5,6 +5,8 @@ export interface I18nContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   t: (key: StringKey, vars?: Record<string, string | number>) => string;
+  /** Plural-aware lookup: keys `base_one` / `base_few` / `base_many` / `base_other`. */
+  tn: (base: string, n: number) => string;
   /** Locale-aware decimal formatting for measurements. */
   formatNumber: (value: number, maximumFractionDigits?: number) => string;
 }
@@ -45,6 +47,11 @@ export function I18nProvider({ children, initial }: { children: ReactNode; initi
       locale,
       setLocale,
       t: (key, vars) => interpolate(STRINGS[locale][key], vars),
+      tn: (base, n) => {
+        const dict = STRINGS[locale] as Record<string, string>;
+        const cat = new Intl.PluralRules(locale).select(n);
+        return dict[`${base}_${cat}`] ?? dict[`${base}_other`] ?? base;
+      },
       formatNumber: (v, max = 2) => new Intl.NumberFormat(locale, { maximumFractionDigits: max }).format(v),
     }),
     [locale]

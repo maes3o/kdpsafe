@@ -121,7 +121,9 @@ describe('verdict states', () => {
     await uploadAndRun(user, screen);
 
     expect(await screen.findByTestId('verdict-card')).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION');
-    expect(screen.getByText('Confirmed problems: 2')).toBeInTheDocument();
+    const headline = screen.getByTestId('verdict-headline');
+    expect(headline).toHaveTextContent('2');
+    expect(headline).toHaveTextContent('problems found');
     const list = screen.getByTestId('issue-list');
     expect(within(list).getByText('Page 3')).toBeInTheDocument();
     expect(within(list).getByText(/Graphic extends 0\.056 in past the safe margin \(top\)/)).toBeInTheDocument();
@@ -137,9 +139,11 @@ describe('verdict states', () => {
     await uploadAndRun(user, screen);
 
     expect(await screen.findByTestId('verdict-card')).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
-    expect(verdict()).toHaveTextContent(/cannot safely decide or fix this automatically/);
-    expect(verdict()).toHaveTextContent(/does not necessarily mean the PDF is wrong/);
-    expect(verdict()).not.toHaveTextContent(/confirmed problem/);
+    expect(screen.getByTestId('verdict-headline')).toHaveTextContent('1');
+    expect(screen.getByTestId('verdict-headline')).toHaveTextContent('item needs your attention');
+    expect(verdict()).toHaveTextContent(/cannot safely confirm these automatically/);
+    expect(verdict()).toHaveTextContent(/does not mean the PDF is wrong/);
+    expect(verdict()).not.toHaveTextContent(/Also confirmed problems/);
     expect(screen.getByText(/never moves text automatically/)).toBeInTheDocument();
   });
 });
@@ -189,6 +193,39 @@ describe('issue -> page navigation', () => {
     expect(screen.getByTestId('viewer')).toHaveAttribute('data-focus-page', '2'); // pageIndex 2 = page 3
     expect(screen.getByTestId('viewer')).toHaveAttribute('data-active', 'v-0');
     expect(screen.getByTestId('viewer')).toHaveAttribute('data-marks', '2');
+  });
+});
+
+describe('verdict hierarchy + mobile navigation', () => {
+  it('READY states the answer first, then what was checked', async () => {
+    const engine = makeEngine({ preflight: () => READY, verify: () => verifyResult({ before: READY }) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('verdict-card');
+    expect(screen.getByTestId('verdict-headline')).toHaveTextContent('No problems found.');
+    expect(verdict()).toHaveTextContent('Checked: margins and bleed.');
+  });
+
+  it('uses correct Ukrainian plural forms next to the number', async () => {
+    const engine = makeEngine({ preflight: () => NEEDS_ATTENTION });
+    const { user } = renderApp(engine, 'uk');
+    await user.upload(screen.getByTestId('file-input'), pdfFile());
+    await user.type(await screen.findByLabelText(/Ширина обрізу/), '6');
+    await user.type(screen.getByLabelText(/Висота обрізу/), '9');
+    await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
+    await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
+    expect(await screen.findByTestId('verdict-headline')).toHaveTextContent(/2\s*проблеми знайдено/);
+  });
+
+  it('on narrow screens the PDF preview has an explicit way back to the results', async () => {
+    const engine = makeEngine({ preflight: () => NEEDS_ATTENTION });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('issue-list');
+    await user.click(within(screen.getByTestId('issue-list')).getAllByRole('button')[0]);
+    expect(screen.queryByTestId('issue-list')).not.toBeInTheDocument(); // now in the Preview tab
+    await user.click(screen.getByRole('button', { name: 'Back to results' }));
+    expect(await screen.findByTestId('issue-list')).toBeInTheDocument();
   });
 });
 
