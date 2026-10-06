@@ -20,7 +20,7 @@ export function VerificationCard({ fix, onDiscard }: { fix: VerifyAutofixResult;
       data-after={fix.after === null ? 'null' : 'result'}
       className={`rounded-lg border p-3 ${tone.border} ${tone.soft}`}
     >
-      <p className={`flex items-center gap-2 text-sm font-bold tracking-wide ${tone.text}`}>
+      <p className={`flex items-center gap-2 font-display text-base font-bold tracking-wide ${tone.text}`}>
         <span aria-hidden="true" className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current font-mono text-xs">
           {glyph}
         </span>

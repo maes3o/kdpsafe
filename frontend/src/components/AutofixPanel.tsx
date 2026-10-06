@@ -1,6 +1,7 @@
 import { useI18n } from '../i18n/context';
 import type { AutofixPlan, BBoxPt } from '../engine/types';
-import { formatInches, objectLabel } from '../i18n/labels';
+import { objectLabel } from '../i18n/labels';
+import { useUnit } from '../units/context';
 import { planId } from '../workspace/issues';
 import { btnPrimary, sectionTitle } from './ui';
 
@@ -26,12 +27,13 @@ export function AutofixPanel({
   disabled: boolean;
 }) {
   const { t, formatNumber } = useI18n();
+  const { formatPt } = useUnit();
   const applyableCount = plans.filter((p) => p.applyable).length;
 
   function shiftText(plan: AutofixPlan): string {
     const parts: string[] = [];
     const { dx, dy } = plan.shift;
-    const amt = (v: number) => formatInches(v, formatNumber, t('inchesShort'));
+    const amt = (v: number) => formatPt(v);
     if (Math.abs(dx) > EPS_PT) parts.push(t(dx > 0 ? 'shiftRight' : 'shiftLeft', { amount: amt(dx) }));
     if (Math.abs(dy) > EPS_PT) parts.push(t(dy > 0 ? 'shiftUp' : 'shiftDown', { amount: amt(dy) }));
     return parts.join(` ${t('shiftAnd')} `);

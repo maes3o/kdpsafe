@@ -13,7 +13,7 @@ describe('empty state', () => {
     expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose a PDF' })).toBeInTheDocument();
     expect(screen.getByTestId('dropzone')).toBeInTheDocument();
-    expect(screen.getByText(/not sent to a server/)).toBeInTheDocument();
+    expect(screen.getByText(/does not send your file to a server/)).toBeInTheDocument();
   });
 
   it('rejects a non-PDF without calling the engine', async () => {
@@ -43,9 +43,40 @@ describe('manuscript settings', () => {
     expect(engine.runPreflight).toHaveBeenCalledTimes(1);
     expect(engine.runPreflight.mock.calls[0][1]).toEqual({ userIntent: { trimSize: { widthIn: 5.5, heightIn: 8.5 }, bleed: false } });
 
-    await user.selectOptions(screen.getByLabelText(/^Bleed/), 'yes');
+    await user.click(screen.getByRole('radio', { name: /With bleed/ }));
     await waitFor(() => expect(engine.runPreflight).toHaveBeenCalledTimes(2));
     expect(engine.runPreflight.mock.calls[1][1].userIntent.bleed).toBe(true);
+  });
+});
+
+describe('size help', () => {
+  it('a KDP preset fills the size; switching to mm shows the same size and still sends inches', async () => {
+    const engine = makeEngine({ preflight: () => NEEDS_ATTENTION });
+    const { user } = renderApp(engine);
+    await user.upload(screen.getByTestId('file-input'), pdfFile());
+    await user.selectOptions(await screen.findByLabelText('KDP trim size'), '6x9');
+    expect(screen.getByLabelText(/Trim width/)).toHaveValue('6');
+    await user.click(screen.getByRole('button', { name: 'Millimetres' }));
+    expect(screen.getByLabelText(/Trim width/)).toHaveValue('152.4');
+    expect(screen.getByLabelText(/Trim height/)).toHaveValue('228.6');
+    await user.click(screen.getByRole('radio', { name: /No bleed/ }));
+    await user.click(screen.getByRole('button', { name: 'Run preflight' }));
+    await screen.findByTestId('verdict-card');
+    expect(engine.runPreflight.mock.calls[0][1].userIntent.trimSize).toEqual({ widthIn: 6, heightIn: 9 });
+    // results are shown in the chosen unit
+    expect(screen.getByText(/Graphic extends 1\.4 mm past the safe margin/)).toBeInTheDocument();
+  });
+
+  it('suggests a preset (and bleed) from the PDF page size, but only applies it when asked', async () => {
+    const engine = makeEngine({ preflight: () => READY, verify: () => verifyResult({ before: READY }) });
+    const { user } = renderApp(engine);
+    await user.upload(screen.getByTestId('file-input'), pdfFile());
+    expect(await screen.findByText(/matches 6 × 9 in with bleed/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Trim width/)).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Use this' }));
+    expect(screen.getByLabelText(/Trim width/)).toHaveValue('6');
+    expect(screen.getByRole('radio', { name: /With bleed/ })).toBeChecked();
+    expect(engine.runPreflight).not.toHaveBeenCalled();
   });
 });
 
@@ -130,7 +161,7 @@ describe('orientation ambiguity', () => {
     await waitFor(() => expect(verdict()).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION'));
     expect(screen.queryByTestId('orientation-resolver')).not.toBeInTheDocument();
     // and the settings form reflects the chosen direction
-    expect(screen.getByLabelText(/^Reading direction/)).toHaveValue('rtl');
+    expect(screen.getByLabelText(/Reading direction/)).toHaveValue('rtl');
   });
 
   it('keeps asking if the engine still reports ambiguity', async () => {
@@ -286,7 +317,7 @@ describe('errors', () => {
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
     await screen.findByTestId('verdict-card');
-    await user.selectOptions(screen.getByLabelText(/^Bleed/), 'yes');
+    await user.click(screen.getByRole('radio', { name: /With bleed/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/second run failed/);
     expect(screen.queryByTestId('verdict-card')).not.toBeInTheDocument();
   });
@@ -295,13 +326,13 @@ describe('errors', () => {
 describe('language and theme', () => {
   it('switches Ukrainian <-> English and persists the choice', async () => {
     const { user } = renderApp(makeEngine({ preflight: () => READY }), 'uk');
-    expect(screen.getByRole('button', { name: 'Обрати PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Вибрати PDF' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'EN' }));
     expect(screen.getByRole('button', { name: 'Choose a PDF' })).toBeInTheDocument();
     expect(localStorage.getItem('kdpsafe.locale')).toBe('en');
     expect(document.documentElement.lang).toBe('en');
     await user.click(screen.getByRole('button', { name: 'UA' }));
-    expect(screen.getByRole('button', { name: 'Обрати PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Вибрати PDF' })).toBeInTheDocument();
   });
 
   it('renders verdicts in Ukrainian without changing the engine value', async () => {
@@ -310,7 +341,7 @@ describe('language and theme', () => {
     await user.upload(screen.getByTestId('file-input'), pdfFile());
     await user.type(await screen.findByLabelText(/Ширина обрізу/), '6');
     await user.type(screen.getByLabelText(/Висота обрізу/), '9');
-    await user.selectOptions(screen.getByLabelText(/^Виліт/), 'no');
+    await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
     await user.click(screen.getByRole('button', { name: 'Запустити перевірку' }));
     const card = await screen.findByTestId('verdict-card');
     expect(card).toHaveTextContent('ПОТРІБНА УВАГА');

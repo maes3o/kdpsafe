@@ -12,9 +12,13 @@ export function Header() {
   const { mode, toggle } = useTheme();
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-bg px-4">
-      <div className="flex items-baseline gap-3">
-        <h1 className="text-base font-semibold tracking-tight">{t('appTitle')}</h1>
-        <span className="hidden text-sm text-ink-muted sm:inline">{t('appSubtitle')}</span>
+      <div className="flex items-center gap-2.5">
+        <svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true" className="shrink-0">
+          <rect x="1.5" y="1.5" width="19" height="23" className="fill-none stroke-ink" strokeWidth="1.8" />
+          <rect x="5.5" y="5.5" width="11" height="15" className="fill-none stroke-ink" strokeWidth="1.2" strokeDasharray="2 2" />
+        </svg>
+        <h1 className="font-display text-lg font-semibold tracking-tight">{t('appTitle')}</h1>
+        <span className="hidden font-mono text-[11px] uppercase tracking-widest text-ink-muted sm:inline">{t('appSubtitle')}</span>
       </div>
       <div className="flex items-center gap-3">
         <div role="group" aria-label={t('language')} className="inline-flex overflow-hidden rounded-md border border-border-strong">

@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/jetbrains-mono';
+@import '@fontsource-variable/literata';
 
 /* Class-based dark mode (ThemeProvider toggles `.dark` on <html>). */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -12,52 +13,61 @@
 @theme {
   --font-sans: 'Inter Variable', Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  /* Book-typography serif for headings and verdicts (Cyrillic-capable). */
+  --font-display: 'Literata Variable', Literata, Georgia, 'Times New Roman', serif;
 
-  --color-ink: #1b1f27;
-  --color-ink-muted: #5b6372;
-  --color-bg: #ffffff;
-  --color-bg-panel: #f6f7f9;
-  --color-bg-hover: #eceef2;
-  --color-viewer: #e3e5ea;
-  --color-border: #dde0e7;
-  --color-border-strong: #bfc5d0;
-  --color-accent: #2557c7;
-  --color-accent-ink: #ffffff;
+  /* Square-ish corners: a prepress tool, not a rounded SaaS card. */
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
 
-  --color-status-ready: #166534;
-  --color-status-ready-soft: #e6f4ea;
-  --color-status-attention: #8f3f08;
-  --color-status-attention-soft: #fdf0dc;
-  --color-status-review: #5b3fb0;
-  --color-status-review-soft: #eeeafa;
-  --color-status-error: #b42318;
-  --color-status-error-soft: #fcebe9;
+  /* Paper + ink. The only chroma in the UI is the four state colours. */
+  --color-ink: #1c1d22;
+  --color-ink-muted: #5d5e66;
+  --color-bg: #fbfaf6;
+  --color-bg-panel: #f2f0e9;
+  --color-bg-hover: #e8e5db;
+  --color-viewer: #d8d4c8;
+  --color-border: #ddd9cc;
+  --color-border-strong: #b9b3a2;
+  /* Primary actions are solid ink (links, focus and toggles use it too). */
+  --color-accent: #1c1d22;
+  --color-accent-ink: #fbfaf6;
 
-  --shadow-page: 0 1px 3px rgb(0 0 0 / 0.18), 0 0 0 1px rgb(0 0 0 / 0.06);
+  --color-status-ready: #1d6b3a;
+  --color-status-ready-soft: #e4f1e4;
+  --color-status-attention: #8a4a05;
+  --color-status-attention-soft: #fbeed3;
+  --color-status-review: #58409e;
+  --color-status-review-soft: #ece8f7;
+  --color-status-error: #a8281c;
+  --color-status-error-soft: #fae8e3;
+
+  --shadow-page: 0 1px 2px rgb(40 30 10 / 0.22), 0 0 0 1px rgb(40 30 10 / 0.08);
 }
 
 .dark {
-  --color-ink: #e6e9ef;
-  --color-ink-muted: #98a1b0;
-  --color-bg: #13151b;
-  --color-bg-panel: #181b22;
-  --color-bg-hover: #222631;
-  --color-viewer: #0d0e12;
-  --color-border: #2a2f3b;
-  --color-border-strong: #404757;
-  --color-accent: #8aaaff;
-  --color-accent-ink: #0d1424;
+  --color-ink: #ecebe5;
+  --color-ink-muted: #a09f98;
+  --color-bg: #151518;
+  --color-bg-panel: #1c1c20;
+  --color-bg-hover: #26262b;
+  --color-viewer: #0e0e10;
+  --color-border: #2c2c32;
+  --color-border-strong: #45454d;
+  --color-accent: #ecebe5;
+  --color-accent-ink: #151518;
 
-  --color-status-ready: #6ddb98;
-  --color-status-ready-soft: #14291e;
-  --color-status-attention: #f2b658;
-  --color-status-attention-soft: #2d2512;
-  --color-status-review: #bba9ff;
-  --color-status-review-soft: #231d3b;
-  --color-status-error: #ff8f85;
-  --color-status-error-soft: #331b1a;
+  --color-status-ready: #72d99a;
+  --color-status-ready-soft: #14281c;
+  --color-status-attention: #f0b45a;
+  --color-status-attention-soft: #2b2312;
+  --color-status-review: #bfaeff;
+  --color-status-review-soft: #221d38;
+  --color-status-error: #ff9288;
+  --color-status-error-soft: #321b19;
 
-  --shadow-page: 0 1px 3px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
+  --shadow-page: 0 1px 3px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 html,
@@ -128,4 +138,34 @@ body {
 }
 .indeterminate-bar {
   animation: kdp-indeterminate 1.4s ease-in-out infinite;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+}
+
+/* Printer's crop marks at the four corners of a box. */
+.crop-marks {
+  position: relative;
+}
+.crop-marks::before,
+.crop-marks::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  pointer-events: none;
+  --m: 14px;
+  background:
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) top left / var(--m) 1px no-repeat,
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) top left / 1px var(--m) no-repeat,
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) top right / var(--m) 1px no-repeat,
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) top right / 1px var(--m) no-repeat;
+}
+.crop-marks::after {
+  background:
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) bottom left / var(--m) 1px no-repeat,
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) bottom left / 1px var(--m) no-repeat,
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) bottom right / var(--m) 1px no-repeat,
+    linear-gradient(var(--color-ink-muted), var(--color-ink-muted)) bottom right / 1px var(--m) no-repeat;
 }

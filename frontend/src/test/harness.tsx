@@ -47,6 +47,6 @@ export async function uploadAndRun(
   await user.upload(screen.getByTestId('file-input'), pdfFile());
   await user.type(await screen.findByLabelText(/Trim width/), settings.w ?? '6');
   await user.type(screen.getByLabelText(/Trim height/), settings.h ?? '9');
-  await user.selectOptions(screen.getByLabelText(/^Bleed/), settings.bleed ?? 'no');
+  await user.click(screen.getByRole('radio', { name: settings.bleed === 'yes' ? /With bleed/ : /No bleed/ }));
   await user.click(screen.getByRole('button', { name: 'Run preflight' }));
 }

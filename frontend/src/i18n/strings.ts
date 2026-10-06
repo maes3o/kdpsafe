@@ -17,15 +17,15 @@ const en = {
   themeSwitchToLight: 'Switch to light theme',
 
   // Empty state
-  emptyTitle: 'Check your PDF before KDP does',
+  emptyTitle: 'Check your book before KDP does',
   emptyBody:
-    'Drop your interior PDF to check its margins and bleed against KDP requirements. If a problem can be fixed safely, KDPSafe shows exactly what will change and only applies it when you approve.',
+    'Upload the PDF of your book pages. KDPSafe checks margins and bleed, shows exactly what a safe fix would change, and applies it only when you approve.',
   dropPrompt: 'Drop a PDF here',
   dropOr: 'or',
   browse: 'Choose a PDF',
-  dropHint: 'PDF files only. Interior (manuscript) PDF.',
+  dropHint: 'PDF only: the book pages, without the cover.',
   privacyNote:
-    'KDPSafe has no upload step: your PDF is read and checked inside this browser tab and is not sent to a server.',
+    'KDPSafe does not send your file to a server: the PDF is opened and checked only inside this browser tab.',
   scopeNote: 'KDPSafe currently checks margins and bleed only. Colour, fonts and transparency are not checked.',
 
   // Busy states
@@ -55,8 +55,8 @@ const en = {
   geometryUnavailableHint: 'Page geometry could not be determined, so margins cannot be confirmed.',
 
   // Settings
-  settingsTitle: 'Manuscript settings',
-  settingsIntro: 'KDPSafe needs these to check your file. They are never guessed.',
+  settingsTitle: 'Book settings',
+  settingsIntro: 'KDPSafe needs these to check your file. It never guesses them.',
   trimWidth: 'Trim width',
   trimHeight: 'Trim height',
   bleedLabel: 'Bleed',
@@ -65,10 +65,10 @@ const en = {
   readingUnspecified: 'Not specified',
   readingLtr: 'Left to right',
   readingRtl: 'Right to left',
-  readingHelp: 'Needed to know which side is the inner (gutter) margin.',
-  detectedPageSize: 'Page 1 of this PDF is {width} × {height} in.',
+  readingHelp: 'Needed to tell which side is the inner margin, next to the spine.',
+  detectedPageSize: 'Page 1 of this PDF is {size}.',
   useDetectedSize: 'Use as trim size',
-  settingsInvalid: 'Enter a trim width and height above 0 and choose whether the file has bleed.',
+  settingsInvalid: 'Enter a width and height above 0 and choose whether the file has bleed.',
   runPreflight: 'Run preflight',
   editSettings: 'Edit settings',
   settingsRerunNote: 'Changing a setting re-runs the check.',
@@ -211,6 +211,33 @@ const en = {
 
   // Technical
   technicalDetails: 'Technical details',
+
+  // Settings, units, help
+  sizePresetLabel: 'KDP trim size',
+  mmShort: 'mm',
+  unitsLabel: 'Units',
+  unitIn: 'Inches',
+  unitMm: 'Millimetres',
+  sizeLabel: 'Trim size',
+  sizeCustom: 'Custom size',
+  sizeChoose: 'Choose a size…',
+  sizeHint: 'Common KDP paperback sizes. Not sure? Use the size you picked when you set up the book on KDP.',
+  sizeSuggest: 'This PDF’s pages are {page}. That matches {size} {bleed}.',
+  sizeSuggestWith: 'with bleed',
+  sizeSuggestWithout: 'without bleed',
+  sizeSuggestApply: 'Use this',
+  bleedNoTitle: 'No bleed',
+  bleedNoBody: 'Pages are exactly the trim size. Nothing is printed right up to the page edge.',
+  bleedYesTitle: 'With bleed',
+  bleedYesBody: 'Pictures or backgrounds run past the trim edge, so each page is slightly larger than the trim size.',
+  bleedHint: 'Not sure? If pictures or colours touch the edge of a page, you need bleed. Otherwise choose “No bleed”.',
+  helpTitle: 'What are trim size, bleed and safe margin?',
+  helpTrim: 'Trim size is the final size of a page after the book is cut. You choose it on KDP when you set up the book.',
+  helpBleed: 'Bleed is extra picture area beyond the trim edge, so no white strip shows if the cut is slightly off. KDP asks for 0.125 in (3.2 mm) on the outside, top and bottom.',
+  helpSafe: 'The safe margin is the area inside the page where text and important objects must stay, so nothing is cut off or lost in the binding.',
+  step1: 'Upload the PDF of your book pages',
+  step2: 'Choose trim size and bleed',
+  step3: 'Review the result and apply safe fixes',
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -224,16 +251,16 @@ const uk: Record<StringKey, string> = {
   themeSwitchToDark: 'Увімкнути темну тему',
   themeSwitchToLight: 'Увімкнути світлу тему',
 
-  emptyTitle: 'Перевірте PDF раніше, ніж це зробить KDP',
+  emptyTitle: 'Перевірте книгу, перш ніж її перевірить KDP',
   emptyBody:
-    'Перетягніть PDF інтер’єру, щоб перевірити поля та виліт за вимогами KDP. Якщо проблему можна виправити безпечно, KDPSafe покаже, що саме зміниться, і застосує це лише після вашого підтвердження.',
+    'Завантажте PDF зі сторінками книги — KDPSafe перевірить поля та виліт. Якщо щось можна виправити безпечно, він покаже, що саме зміниться, і застосує зміну лише з вашого дозволу.',
   dropPrompt: 'Перетягніть PDF сюди',
   dropOr: 'або',
-  browse: 'Обрати PDF',
-  dropHint: 'Лише файли PDF. PDF інтер’єру (рукопису).',
+  browse: 'Вибрати PDF',
+  dropHint: 'Лише PDF зі сторінками книги, без обкладинки.',
   privacyNote:
-    'У KDPSafe немає завантаження на сервер: ваш PDF читається й перевіряється всередині цієї вкладки браузера та нікуди не надсилається.',
-  scopeNote: 'Наразі KDPSafe перевіряє лише поля та виліт. Колір, шрифти й прозорість не перевіряються.',
+    'KDPSafe не надсилає ваш файл на сервер: PDF відкривається й перевіряється лише у цій вкладці браузера.',
+  scopeNote: 'Поки що перевіряються лише поля та виліт. Колір, шрифти й прозорість — ні.',
 
   readingFile: 'Читання файлу…',
   runningPreflight: 'Виконується перевірка…',
@@ -242,14 +269,14 @@ const uk: Record<StringKey, string> = {
   applyingFixDetail: 'Ваш оригінальний файл не змінюється. Змінена копія перевіряється заново.',
   verifying: 'Підтвердження верифікації…',
 
-  replaceFile: 'Обрати інший PDF',
+  replaceFile: 'Вибрати інший PDF',
   documentPages: 'Сторінок',
   documentTrim: 'Розмір обрізу',
   documentBleed: 'Виліт',
   documentGeometry: 'Геометрія сторінок',
   bleedYes: 'З вильотом',
   bleedNo: 'Без вильоту',
-  inchesShort: 'дюйм.',
+  inchesShort: 'дюйм',
   pointsShort: 'пт',
   pagesInconsistent: 'Сторінки в цьому PDF мають різний розмір.',
   geometryComplete: 'Визначена повністю',
@@ -259,20 +286,20 @@ const uk: Record<StringKey, string> = {
   geometryUnavailable: 'Недоступна',
   geometryUnavailableHint: 'Геометрію сторінок не вдалося визначити, тому поля не можна підтвердити.',
 
-  settingsTitle: 'Параметри рукопису',
-  settingsIntro: 'KDPSafe потрібні ці значення для перевірки. Вони ніколи не вгадуються.',
+  settingsTitle: 'Параметри книги',
+  settingsIntro: 'Ці дані потрібні для перевірки. KDPSafe їх ніколи не вгадує.',
   trimWidth: 'Ширина обрізу',
   trimHeight: 'Висота обрізу',
   bleedLabel: 'Виліт',
-  bleedChoose: 'Оберіть…',
+  bleedChoose: 'Виберіть…',
   readingDirection: 'Напрямок читання',
   readingUnspecified: 'Не вказано',
   readingLtr: 'Зліва направо',
   readingRtl: 'Справа наліво',
-  readingHelp: 'Потрібен, щоб знати, яка сторона є внутрішнім полем (корінцем).',
-  detectedPageSize: 'Сторінка 1 цього PDF: {width} × {height} дюйм.',
+  readingHelp: 'Потрібен, щоб визначити, з якого боку внутрішнє поле — біля корінця.',
+  detectedPageSize: 'Сторінка 1 цього PDF: {size}.',
   useDetectedSize: 'Використати як розмір обрізу',
-  settingsInvalid: 'Вкажіть ширину й висоту обрізу більше 0 та оберіть, чи є у файлі виліт.',
+  settingsInvalid: 'Вкажіть ширину й висоту більше нуля та оберіть, чи є у файлі виліт.',
   runPreflight: 'Запустити перевірку',
   editSettings: 'Змінити параметри',
   settingsRerunNote: 'Зміна параметра запускає перевірку заново.',
@@ -331,7 +358,7 @@ const uk: Record<StringKey, string> = {
 
   orientTitle: 'У якому напрямку читається ваша книга?',
   orientBody:
-    'KDPSafe не може визначити, яка сторона є внутрішнім полем (корінцем). Оберіть напрямок читання — і перевірка запуститься знову.',
+    'KDPSafe не може визначити, з якого боку внутрішнє поле — біля корінця. Виберіть напрямок читання, і перевірка запуститься знову.',
   orientAffected: 'Стосується об’єктів: {n} · {pages}',
   orientChooseLtr: 'Зліва направо',
   orientChooseRtl: 'Справа наліво',
@@ -406,6 +433,32 @@ const uk: Record<StringKey, string> = {
   tryAgain: 'Спробувати ще раз',
 
   technicalDetails: 'Технічні подробиці',
+
+  sizePresetLabel: 'Розмір обрізу KDP',
+  mmShort: 'мм',
+  unitsLabel: 'Одиниці',
+  unitIn: 'Дюйми',
+  unitMm: 'Міліметри',
+  sizeLabel: 'Розмір обрізу',
+  sizeCustom: 'Власний розмір',
+  sizeChoose: 'Виберіть розмір…',
+  sizeHint: 'Поширені розміри паперових книг KDP. Не впевнені? Візьміть той, який ви вибрали, створюючи книгу на KDP.',
+  sizeSuggest: 'Сторінки цього PDF — {page}. Це відповідає розміру {size} {bleed}.',
+  sizeSuggestWith: 'з вильотом',
+  sizeSuggestWithout: 'без вильоту',
+  sizeSuggestApply: 'Застосувати',
+  bleedNoTitle: 'Без вильоту',
+  bleedNoBody: 'Сторінки точно мають розмір обрізу. Ніщо не друкується впритул до краю сторінки.',
+  bleedYesTitle: 'З вильотом',
+  bleedYesBody: 'Зображення чи фон виходять за лінію обрізу, тож кожна сторінка трохи більша за розмір обрізу.',
+  bleedHint: 'Не впевнені? Якщо зображення або колір доходять до краю сторінки, виліт потрібен. Інакше оберіть «Без вильоту».',
+  helpTitle: 'Що таке розмір обрізу, виліт і безпечне поле?',
+  helpTrim: 'Розмір обрізу — це кінцевий розмір сторінки після обрізання книги. Його ви вибираєте на KDP, створюючи книгу.',
+  helpBleed: 'Виліт — це додаткова ділянка зображення за лінією обрізу, щоб не з’явилася біла смужка, якщо різак зсунеться. KDP вимагає 0,125 дюйма (3,2 мм) ззовні, зверху й знизу.',
+  helpSafe: 'Безпечне поле — це ділянка всередині сторінки, де мають залишатися текст і важливі об’єкти, щоб їх не обрізало і не сховало у палітурці.',
+  step1: 'Завантажте PDF зі сторінками книги',
+  step2: 'Вкажіть розмір обрізу та виліт',
+  step3: 'Перегляньте результат і застосуйте безпечні виправлення',
 };
 
 export const STRINGS: Record<Locale, Record<StringKey, string>> = { en, uk };

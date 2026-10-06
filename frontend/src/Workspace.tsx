@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { EngineApi } from './engine/api';
 import type { AutofixPlan, BBoxPt, UserIntent } from './engine/types';
 import { useI18n } from './i18n/context';
+import { useUnit } from './units/context';
 import { useWorkspace } from './workspace/useWorkspace';
 import { ambiguousEntries, applyablePlans, buildMarks, planId } from './workspace/issues';
 import { baseName, buildReport, downloadBlob } from './workspace/report';
@@ -21,9 +22,9 @@ import { PdfViewer } from './components/viewer/PdfViewer';
 import type { ViewerFocus, ViewerMark } from './components/viewer/types';
 import { sectionTitle } from './components/ui';
 
-function intentSummary(intent: UserIntent, t: ReturnType<typeof useI18n>['t']): string {
+function intentSummary(intent: UserIntent, t: ReturnType<typeof useI18n>['t'], formatPair: (w: number, h: number) => string): string {
   const dir = intent.readingDirection === 'ltr' ? t('readingLtr') : intent.readingDirection === 'rtl' ? t('readingRtl') : null;
-  return [`${intent.trimSize.widthIn} × ${intent.trimSize.heightIn} ${t('inchesShort')}`, intent.bleed ? t('bleedYes') : t('bleedNo'), dir]
+  return [formatPair(intent.trimSize.widthIn, intent.trimSize.heightIn), intent.bleed ? t('bleedYes') : t('bleedNo'), dir]
     .filter(Boolean)
     .join(' · ');
 }
@@ -35,6 +36,7 @@ function intentSummary(intent: UserIntent, t: ReturnType<typeof useI18n>['t']): 
  */
 export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
   const { t } = useI18n();
+  const { formatPair } = useUnit();
   const ws = useWorkspace(createEngine);
   const { state } = ws;
   const { inspection, fix, intent, busy, failure, file } = state;
@@ -92,7 +94,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
   const working = busy === 'preflight' || busy === 'autofix';
   const canDownloadPdf = fix?.verification === 'VERIFIED';
 
-  const intentSub = intent ? intentSummary(intent, t) : null;
+  const intentSub = intent ? intentSummary(intent, t, formatPair) : null;
   const toolbarExtra = fixedAvailable ? (
     <div role="group" aria-label={`${t('viewOriginal')} / ${t('viewFixed')}`} className="inline-flex overflow-hidden rounded-md border border-border-strong">
       {([false, true] as const).map((fixedMode) => (
@@ -111,7 +113,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] lg:overflow-hidden">
-      <div ref={viewerBox} className="order-1 h-[60vh] min-h-0 border-b border-border lg:order-2 lg:h-auto lg:border-b-0 lg:border-l">
+      <div ref={viewerBox} className={`order-1 min-h-0 border-b border-border lg:order-2 lg:h-auto lg:border-b-0 lg:border-l ${inspection ? 'h-[60vh]' : 'h-[38vh]'}`}>
         <PdfViewer
           pdfBytes={viewBytes}
           inspection={viewInspection}

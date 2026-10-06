@@ -1,5 +1,6 @@
 import { useI18n } from '../i18n/context';
 import type { InspectionResult, UserIntent } from '../engine/types';
+import { useUnit } from '../units/context';
 import { btnGhost } from './ui';
 
 function formatSize(bytes: number): string {
@@ -28,7 +29,8 @@ export function DocumentHeader({ file, onReplace }: { file: { name: string; size
 /** Pages / trim / bleed / geometry. Shown below the verdict so the answer
  * comes first. */
 export function DocumentDetails({ inspection, intent }: { inspection: InspectionResult; intent: UserIntent | null }) {
-  const { t, formatNumber } = useI18n();
+  const { t } = useI18n();
+  const { formatPair } = useUnit();
   const geo = inspection.geometry.status;
   return (
     <section aria-label={t('documentGeometry')} className="space-y-3">
@@ -40,7 +42,7 @@ export function DocumentDetails({ inspection, intent }: { inspection: Inspection
         <div>
           <dt className="text-xs text-ink-muted">{t('documentTrim')}</dt>
           <dd className="font-mono">
-            {formatNumber(inspection.document.trimWidthIn, 3)} × {formatNumber(inspection.document.trimHeightIn, 3)} {t('inchesShort')}
+            {formatPair(inspection.document.trimWidthIn, inspection.document.trimHeightIn)}
           </dd>
         </div>
         <div>

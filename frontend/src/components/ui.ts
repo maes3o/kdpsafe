@@ -6,7 +6,7 @@ export const btnPrimary =
 export const btnSecondary =
   'inline-flex items-center justify-center gap-2 rounded-md border border-border-strong bg-bg px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg-hover disabled:cursor-not-allowed disabled:opacity-50';
 export const btnGhost =
-  'inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-accent hover:bg-bg-hover disabled:opacity-50';
+  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-sm font-medium text-ink underline underline-offset-2 hover:bg-bg-hover disabled:opacity-50';
 export const inputCls =
   'h-9 w-full rounded-md border border-border-strong bg-bg px-2.5 font-mono text-sm text-ink placeholder:text-ink-muted';
 export const sectionTitle = 'text-xs font-semibold uppercase tracking-wide text-ink-muted';

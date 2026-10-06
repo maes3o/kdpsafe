@@ -1,6 +1,7 @@
 import { useI18n } from '../i18n/context';
 import type { BBoxPt, InspectionResult, ManualReviewEntry, Violation } from '../engine/types';
-import { formatInches, formatPoints, objectLabel, sideLabel, sidesLabel } from '../i18n/labels';
+import { formatPoints, objectLabel, sideLabel, sidesLabel } from '../i18n/labels';
+import { useUnit } from '../units/context';
 import type { StringKey } from '../i18n/strings';
 import { groupByPage, isAmbiguous, manualId, violationId } from '../workspace/issues';
 import { StatusIcon } from './StatusIcon';
@@ -47,7 +48,7 @@ function RowButton({ active, onClick, children }: { active: boolean; onClick: ()
         className={`block w-full px-3 py-2.5 text-left hover:bg-bg-hover ${active ? 'bg-bg-hover' : ''}`}
       >
         {children}
-        <span className="mt-1 block text-xs text-accent">{t('showInPdf')} →</span>
+        <span className="mt-1 block text-xs font-medium underline underline-offset-2">{t("showInPdf")} →</span>
       </button>
     </li>
   );
@@ -55,7 +56,8 @@ function RowButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 function ViolationRow({ v, id, active, onFocus }: { v: Violation; id: string; active: boolean; onFocus: FocusIssue }) {
   const { t, formatNumber } = useI18n();
-  const amount = formatInches(v.amountPt, formatNumber, t('inchesShort'));
+  const { formatPt } = useUnit();
+  const amount = formatPt(v.amountPt);
   const text = t(v.violation === 'LEM' ? 'issueLem' : 'issueBleed', {
     object: objectLabel(t, v.type),
     amount,
@@ -73,14 +75,15 @@ function ViolationRow({ v, id, active, onFocus }: { v: Violation; id: string; ac
 }
 
 function ManualRow({ e, id, active, onFocus }: { e: ManualReviewEntry; id: string; active: boolean; onFocus: FocusIssue }) {
-  const { t, formatNumber } = useI18n();
+  const { t } = useI18n();
+  const { formatPt } = useUnit();
   return (
     <RowButton active={active} onClick={() => onFocus(id, e.pageIndex, isAmbiguous(e) ? e.visibleBBoxPt : undefined)}>
       <StatusIcon tone="review" label={t('verdictManualReview')} className="text-sm" />
       <span className="mt-1 block text-sm">{t(MANUAL_TEXT[e.reason], { sides: sidesLabel(t, e.sides) })}</span>
       <span className="mt-0.5 block font-mono text-xs text-ink-muted">
         {e.reason}
-        {e.maxAmountPt !== null && ` · ${t('mrMaxAmount', { amount: formatInches(e.maxAmountPt, formatNumber, t('inchesShort')) })}`}
+        {e.maxAmountPt !== null && ` · ${t('mrMaxAmount', { amount: formatPt(e.maxAmountPt) })}`}
       </span>
     </RowButton>
   );

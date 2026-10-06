@@ -19,8 +19,8 @@ export function EmptyState({ onFile, notice }: { onFile: (file: File) => void; n
   return (
     <div className="mx-auto flex h-full w-full max-w-2xl flex-col justify-center gap-6 px-4 py-10">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{t('emptyTitle')}</h2>
-        <p className="mt-2 text-ink-muted">{t('emptyBody')}</p>
+        <h2 className="font-display text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">{t('emptyTitle')}</h2>
+        <p className="mt-3 text-ink-muted">{t('emptyBody')}</p>
       </div>
 
       <div
@@ -31,8 +31,8 @@ export function EmptyState({ onFile, notice }: { onFile: (file: File) => void; n
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
-        className={`flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-6 py-12 text-center ${
-          dragging ? 'border-accent bg-bg-hover' : 'border-border-strong bg-bg-panel'
+        className={`crop-marks mx-2.5 flex flex-col items-center gap-3 border border-border px-6 py-12 text-center ${
+          dragging ? 'bg-bg-hover' : 'bg-bg-panel'
         }`}
       >
         <p className="text-base font-medium">{t('dropPrompt')}</p>
@@ -64,7 +64,16 @@ export function EmptyState({ onFile, notice }: { onFile: (file: File) => void; n
         </p>
       )}
 
-      <div className="space-y-1 text-sm text-ink-muted">
+      <ol className="grid gap-3 text-sm sm:grid-cols-3">
+        {(['step1', 'step2', 'step3'] as const).map((k, i) => (
+          <li key={k} className="flex gap-2">
+            <span className="font-mono text-ink-muted">{i + 1}</span>
+            <span>{t(k)}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="space-y-1 text-xs text-ink-muted">
         <p>{t('privacyNote')}</p>
         <p>{t('scopeNote')}</p>
       </div>

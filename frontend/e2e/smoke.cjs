@@ -20,7 +20,7 @@ async function fillSettings(page, { w = '6', h = '9', bleed = 'no' } = {}) {
   const inputs = page.locator('aside form input');
   await inputs.nth(0).fill(w);
   await inputs.nth(1).fill(h);
-  await page.locator('aside form select').first().selectOption(bleed);
+  await page.getByRole('radio', { name: bleed === 'yes' ? /With bleed/ : /No bleed/ }).check();
   await page.getByRole('button', { name: /Run preflight|Запустити перевірку/ }).click();
 }
 

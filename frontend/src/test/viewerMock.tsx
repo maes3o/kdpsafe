@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { ViewerFocus } from '../components/viewer/types';
 
 interface MockProps {
@@ -6,10 +7,15 @@ interface MockProps {
   activeMarkId: string | null;
   marks: unknown[];
   toolbarExtra?: React.ReactNode;
+  onDocumentInfo?: (info: { pageCount: number; firstPageWidthIn: number; firstPageHeightIn: number }) => void;
 }
 
 /** jsdom cannot run PDF.js; the real viewer is covered by the browser smoke test. */
 export function PdfViewer(props: MockProps) {
+  const { onDocumentInfo } = props;
+  useEffect(() => {
+    onDocumentInfo?.({ pageCount: 30, firstPageWidthIn: 6.125, firstPageHeightIn: 9.25 });
+  }, [onDocumentInfo]);
   return (
     <div data-testid="viewer" data-bytes={props.pdfBytes?.length ?? 0} data-focus-page={props.focus ? props.focus.pageIndex : ''} data-active={props.activeMarkId ?? ''} data-marks={props.marks.length}>
       {props.toolbarExtra}

@@ -36,7 +36,7 @@ export function VerdictCard({
         <span aria-hidden="true" className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-current font-mono text-xl font-bold">
           {GLYPH[KIND_TONE[d.icon]]}
         </span>
-        <p className="text-xl font-bold tracking-tight">{t(d.labelKey)}</p>
+        <p className="font-display text-2xl font-bold tracking-tight">{t(d.labelKey)}</p>
       </div>
       <p className="mt-2 text-sm text-ink">{t(BODY[verdict])}</p>
       {(confirmedCount > 0 || manualCount > 0) && (
