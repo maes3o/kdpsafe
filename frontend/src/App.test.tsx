@@ -267,6 +267,9 @@ describe('page geometry (TrimBox normalization)', () => {
     await waitFor(() => expect(verdict()).toHaveAttribute('data-verdict', 'READY'));
     expect(screen.getByTestId('geometry-card')).toHaveAttribute('data-geometry-state', 'applied');
     expect(screen.getByTestId('geometry-card')).toHaveTextContent('TrimBox written on 30 page(s)');
+    // neutral: writing a TrimBox is not a verdict, so the card carries no success (green) styling
+    expect(screen.getByTestId('geometry-card').outerHTML).not.toMatch(/status-ready/);
+    expect(screen.getByTestId('geometry-card')).not.toHaveTextContent('✓');
     // VERIFIED comes from the engine's verification of the NEW bytes
     await screen.findByTestId('verification-card');
     expect(engine.verifyAutofix.mock.calls[0][0].length).toBe(5);

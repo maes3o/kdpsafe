@@ -39,25 +39,26 @@ export function PageGeometryCard({
   const { formatPair } = useUnit();
   const [review, setReview] = useState(false);
 
-  // ---- after an applied normalization: confirm + undo ------------------
+  // ---- after an applied normalization: confirm + undo -----------------
+  // Deliberately NEUTRAL (no green / success styling): writing a TrimBox is
+  // not a verdict. READY / VERIFIED are the only positive states and they
+  // come from the engine's own result, shown elsewhere.
   if (normalization) {
     return (
-      <section data-testid="geometry-card" data-geometry-state="applied" className={`rounded-2xl border p-4 shadow-card ${TONE.ready.border} ${TONE.ready.soft}`}>
-        <p className={`flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider ${TONE.ready.text}`}>
-          <span aria-hidden="true" className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${TONE.ready.solid}`}>
-            {GLYPH.ready}
+      <section data-testid="geometry-card" data-geometry-state="applied" className="rounded-2xl border border-border bg-bg p-4 shadow-card">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <span aria-hidden="true" className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border-strong font-mono text-xs text-ink-muted">
+            i
           </span>
           {t('geoApplied', { n: normalization.pagesChanged })}
         </p>
-        <p className="mt-2 text-sm">{t('geoAppliedNote')}</p>
+        <p className="mt-2 text-sm text-ink-muted">{t('geoAppliedNote')}</p>
         <details className="mt-2 text-sm">
           <summary className="cursor-pointer font-medium text-accent">{t('geoChecks')}</summary>
           <ul className="mt-1.5 space-y-1 text-xs">
             {normalization.checks.map((c) => (
-              <li key={c.id}>
-                <span aria-hidden="true" className={c.ok ? TONE.ready.text : TONE.error.text}>
-                  {c.ok ? '✓' : '×'}{' '}
-                </span>
+              <li key={c.id} className={c.ok ? 'text-ink-muted' : TONE.error.text}>
+                <span aria-hidden="true">{c.ok ? '•' : '×'} </span>
                 {safetyCheckLabel(t, c.id)}
               </li>
             ))}

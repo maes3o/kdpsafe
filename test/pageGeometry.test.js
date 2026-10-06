@@ -357,6 +357,108 @@ async function main() {
     assert.equal(a.plan, null);
   });
 
+  // ===== Verifier detection power (negative tests) =====
+  // The safety verifier must FAIL CLOSED on every unexpected change. To prove
+  // it detects them, setTrimBox is temporarily wrapped so that -- while the
+  // legitimate plan is applied -- it ALSO performs a forbidden mutation.
+  // Each case asserts the exact failure id, that no output bytes are
+  // returned, and that the input bytes are untouched.
+  const { PDFPage } = require('pdf-lib');
+
+  async function withMutation(mutate, run, method = 'setTrimBox') {
+    const original = PDFPage.prototype[method];
+    let busy = false;
+    PDFPage.prototype[method] = function patched(...args) {
+      original.apply(this, args);
+      if (busy) return;
+      busy = true;
+      try {
+        mutate(this);
+      } finally {
+        busy = false;
+      }
+    };
+    try {
+      return await run();
+    } finally {
+      PDFPage.prototype[method] = original;
+    }
+  }
+
+  async function expectDetected(label, id, { bytes, intent = U_NOBLEED, mutate, method }) {
+    await runCase(`verifier detects: ${label} -> ${id}`, async () => {
+      const a = await assessPageGeometry(bytes, intent);
+      assert.ok(a.plan, 'precondition: a legitimate plan exists');
+      const snapshot = new Uint8Array(bytes);
+      const res = await withMutation(mutate, () => applyNormalization(bytes, a.plan), method);
+      assert.equal(res.ok, false, 'must fail closed');
+      assert.equal(res.failure, id);
+      assert.equal(res.outputBytes, null, 'no output when a check fails');
+      assert.ok(same(bytes, snapshot), 'input bytes untouched');
+      // control: without the mutation the same plan succeeds
+      const control = await applyNormalization(bytes, a.plan);
+      assert.equal(control.ok, true, 'control: unmutated apply passes every check');
+    });
+  }
+
+  const withBleedBox = await make({ w: 432, h: 648, setup: (p) => p.setBleedBox(0, 0, 432, 648) });
+  const withArtBox = await make({ w: 432, h: 648, setup: (p) => p.setArtBox(10, 10, 400, 600) });
+  const withAnnots = await make({ w: 432, h: 648, annots: true });
+  const plain = await make({ w: 432, h: 648 });
+
+  await expectDetected('page content translated', 'CONTENT_STREAMS_CHANGED', { bytes: plain, mutate: (p) => p.translateContent(5, 5) });
+  await expectDetected('page content scaled', 'CONTENT_STREAMS_CHANGED', { bytes: plain, mutate: (p) => p.scaleContent(0.9, 0.9) });
+  await expectDetected('content operators appended', 'CONTENT_STREAMS_CHANGED', {
+    bytes: plain,
+    mutate: (p) => p.pushOperators(...rect(0, 0, 5, 5)),
+  });
+  await expectDetected('MediaBox changed', 'PAGE_GEOMETRY_CHANGED', { bytes: plain, mutate: (p) => p.setMediaBox(0, 0, 400, 600) });
+  await expectDetected('CropBox added', 'PAGE_GEOMETRY_CHANGED', { bytes: plain, mutate: (p) => p.setCropBox(0, 0, 400, 600) });
+  await expectDetected('page rotated', 'PAGE_GEOMETRY_CHANGED', { bytes: plain, mutate: (p) => p.setRotation(degrees(90)) });
+  await expectDetected('annotations dropped', 'ANNOTATIONS_CHANGED', {
+    bytes: withAnnots,
+    mutate: (p) => p.node.delete(PDFName.of('Annots')),
+  });
+  await expectDetected('annotation Rect moved', 'ANNOTATIONS_CHANGED', {
+    bytes: withAnnots,
+    mutate: (p) => {
+      const arr = p.node.Annots();
+      if (arr) p.doc.context.lookup(arr.get(0)).set(PDFName.of('Rect'), p.doc.context.obj([1, 1, 2, 2]));
+    },
+  });
+  await expectDetected('an EXISTING BleedBox rectangle changed (plan only adds TrimBox)', 'BLEED_BOX_CHANGED', {
+    bytes: withBleedBox,
+    mutate: (p) => p.setBleedBox(1, 1, 430, 640),
+  });
+  await expectDetected('a BleedBox appears that the Tier-1 plan does not include', 'BLEED_BOX_CHANGED', {
+    bytes: plain,
+    mutate: (p) => p.setBleedBox(0, 0, 432, 648),
+  });
+  await expectDetected('an ArtBox appears', 'ART_BOX_CHANGED', { bytes: plain, mutate: (p) => p.setArtBox(2, 2, 300, 300) });
+  await expectDetected('an EXISTING ArtBox rectangle changed', 'ART_BOX_CHANGED', {
+    bytes: withArtBox,
+    mutate: (p) => p.setArtBox(11, 10, 400, 600),
+  });
+  await expectDetected('the TrimBox differs from the plan', 'TRIM_BOX_NOT_AS_PLANNED', {
+    bytes: plain,
+    mutate: (p) => p.setTrimBox(1, 1, 431, 647),
+  });
+  await expectDetected('Tier 2: the BleedBox differs from the plan', 'BLEED_BOX_NOT_AS_PLANNED', {
+    bytes: await make({ w: 441, h: 666 }),
+    intent: U_BLEED_LTR,
+    method: 'setBleedBox', // mutate AFTER the plan's own setBleedBox so the change survives
+    mutate: (p) => p.setBleedBox(0, 0, 440, 666),
+  });
+
+  await runCase('an existing, UNCHANGED BleedBox/ArtBox is preserved exactly and passes (no false alarm)', async () => {
+    for (const bytes of [withBleedBox, withArtBox]) {
+      const a = await assessPageGeometry(bytes, U_NOBLEED);
+      const res = await applyNormalization(bytes, a.plan);
+      assert.equal(res.ok, true);
+      assert.ok(res.checks.some((c) => c.id === 'BLEED_ART_BOXES_UNCHANGED' && c.ok));
+    }
+  });
+
   console.log(`\npageGeometry.test.js: ${n} cases passed`);
 }
 
