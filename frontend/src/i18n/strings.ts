@@ -22,7 +22,7 @@ const en = {
     'Upload the PDF of your book pages. KDPSafe checks margins and bleed, shows exactly what a safe fix would change, and applies it only when you approve.',
   dropPrompt: 'Drop a PDF here',
   dropOr: 'or',
-  browse: 'Choose a PDF',
+  browse: 'Upload PDF',
   dropHint: 'PDF only: the book pages, without the cover.',
   privacyNote:
     'KDPSafe does not send your file to a server: the PDF is opened and checked only inside this browser tab.',
@@ -37,7 +37,7 @@ const en = {
   verifying: 'Confirming verification…',
 
   // Document
-  replaceFile: 'Choose another PDF',
+  replaceFile: 'Remove file',
   documentPages: 'Pages',
   documentTrim: 'Trim size',
   documentBleed: 'Bleed',
@@ -69,7 +69,7 @@ const en = {
   detectedPageSize: 'Page 1 of this PDF is {size}.',
   useDetectedSize: 'Use as trim size',
   settingsInvalid: 'Enter a width and height above 0 and choose whether the file has bleed.',
-  runPreflight: 'Run preflight',
+  runPreflight: 'Check PDF',
   editSettings: 'Edit settings',
   settingsRerunNote: 'Changing a setting re-runs the check.',
 
@@ -148,7 +148,7 @@ const en = {
   autofixBeforeLine: 'Current position',
   autofixAfterLine: 'Planned position (checked again after applying)',
   autofixNotApplicable: 'A safe plan exists, but KDPSafe cannot apply it to this file automatically.',
-  autofixApply: 'Apply fix and re-check',
+  autofixApply: 'Fix automatically and re-check',
   autofixSafety:
     'Your original file is not modified. The changed copy is checked again, and only a verified result can be downloaded.',
   shiftRight: '{amount} to the right',
@@ -238,6 +238,24 @@ const en = {
   step1: 'Upload the PDF of your book pages',
   step2: 'Choose trim size and bleed',
   step3: 'Review the result and apply safe fixes',
+
+  // Redesign
+  dropOrDrag: 'or drop the file here',
+  stepA: 'Upload PDF',
+  stepB: 'Review the result',
+  stepC: 'Fix and download',
+  tabIssues: 'Issues',
+  tabPreview: 'Preview',
+  tabDetails: 'Details',
+  showIssues: 'Show the issues',
+  statBleedYes: 'Yes',
+  statBleedNo: 'None',
+  pagesCount: '{n} pages',
+  autofixCount: 'Fixes available: {n}',
+  bleedInfo: 'What is bleed?',
+  themeToggle: 'Theme',
+  progressTitle: 'Checking your PDF…',
+  openSizeInputs: 'Enter a custom size',
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -256,7 +274,7 @@ const uk: Record<StringKey, string> = {
     'Завантажте PDF зі сторінками книги — KDPSafe перевірить поля та виліт. Якщо щось можна виправити безпечно, він покаже, що саме зміниться, і застосує зміну лише з вашого дозволу.',
   dropPrompt: 'Перетягніть PDF сюди',
   dropOr: 'або',
-  browse: 'Вибрати PDF',
+  browse: 'Завантажити PDF',
   dropHint: 'Лише PDF зі сторінками книги, без обкладинки.',
   privacyNote:
     'KDPSafe не надсилає ваш файл на сервер: PDF відкривається й перевіряється лише у цій вкладці браузера.',
@@ -269,7 +287,7 @@ const uk: Record<StringKey, string> = {
   applyingFixDetail: 'Ваш оригінальний файл не змінюється. Змінена копія перевіряється заново.',
   verifying: 'Підтвердження верифікації…',
 
-  replaceFile: 'Вибрати інший PDF',
+  replaceFile: 'Видалити файл',
   documentPages: 'Сторінок',
   documentTrim: 'Розмір обрізу',
   documentBleed: 'Виліт',
@@ -300,7 +318,7 @@ const uk: Record<StringKey, string> = {
   detectedPageSize: 'Сторінка 1 цього PDF: {size}.',
   useDetectedSize: 'Використати як розмір обрізу',
   settingsInvalid: 'Вкажіть ширину й висоту більше нуля та оберіть, чи є у файлі виліт.',
-  runPreflight: 'Запустити перевірку',
+  runPreflight: 'Перевірити PDF',
   editSettings: 'Змінити параметри',
   settingsRerunNote: 'Зміна параметра запускає перевірку заново.',
 
@@ -374,7 +392,7 @@ const uk: Record<StringKey, string> = {
   autofixBeforeLine: 'Поточне положення',
   autofixAfterLine: 'Заплановане положення (після застосування перевіряється знову)',
   autofixNotApplicable: 'Безпечний план існує, але KDPSafe не може автоматично застосувати його до цього файлу.',
-  autofixApply: 'Застосувати та перевірити знову',
+  autofixApply: 'Виправити автоматично і перевірити знову',
   autofixSafety:
     'Ваш оригінальний файл не змінюється. Змінену копію перевіряють повторно, і завантажити можна лише підтверджений результат.',
   shiftRight: 'на {amount} праворуч',
@@ -459,6 +477,23 @@ const uk: Record<StringKey, string> = {
   step1: 'Завантажте PDF зі сторінками книги',
   step2: 'Вкажіть розмір обрізу та виліт',
   step3: 'Перегляньте результат і застосуйте безпечні виправлення',
+
+  dropOrDrag: 'або перетягніть файл сюди',
+  stepA: 'Завантажити PDF',
+  stepB: 'Перевірити результат',
+  stepC: 'Виправити і завантажити',
+  tabIssues: 'Проблеми',
+  tabPreview: 'Попередній перегляд',
+  tabDetails: 'Деталі',
+  showIssues: 'Показати проблеми',
+  statBleedYes: 'Є',
+  statBleedNo: 'Без',
+  pagesCount: 'Сторінок: {n}',
+  autofixCount: 'Доступних виправлень: {n}',
+  bleedInfo: 'Що таке виліт?',
+  themeToggle: 'Тема',
+  progressTitle: 'Перевіряємо ваш PDF…',
+  openSizeInputs: 'Ввести власний розмір',
 };
 
 export const STRINGS: Record<Locale, Record<StringKey, string>> = { en, uk };

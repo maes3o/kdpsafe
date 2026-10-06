@@ -1,63 +1,47 @@
 import { useI18n } from '../i18n/context';
-import type { InspectionResult, UserIntent } from '../engine/types';
 import { useUnit } from '../units/context';
-import { btnGhost } from './ui';
+import type { InspectionResult, UserIntent } from '../engine/types';
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-/** "What document am I checking?" -- file, pages, trim, bleed, geometry. */
-export function DocumentHeader({ file, onReplace }: { file: { name: string; size: number }; onReplace: () => void }) {
+/** Pages / trim size / bleed -- three compact facts under the verdict. */
+export function DocumentStats({ inspection, intent }: { inspection: InspectionResult; intent: UserIntent | null }) {
   const { t } = useI18n();
+  const { formatPair } = useUnit();
+  const cell = 'flex-1 px-3 py-2.5';
   return (
-    <div className="flex items-start justify-between gap-2">
-      <div className="min-w-0">
-        <p className="truncate font-medium" title={file.name}>
-          {file.name}
-        </p>
-        <p className="font-mono text-xs text-ink-muted">{formatSize(file.size)}</p>
+    <dl className="flex divide-x divide-border rounded-2xl border border-border bg-bg shadow-card">
+      <div className={cell}>
+        <dt className="text-xs text-ink-muted">{t('documentPages')}</dt>
+        <dd className="mt-0.5 text-lg font-semibold">{inspection.document.pageCount}</dd>
       </div>
-      <button type="button" className={btnGhost} onClick={onReplace}>
-        {t('replaceFile')}
-      </button>
-    </div>
+      <div className={cell}>
+        <dt className="text-xs text-ink-muted">{t('documentTrim')}</dt>
+        <dd className="mt-0.5 font-mono text-sm font-semibold leading-7">
+          {formatPair(inspection.document.trimWidthIn, inspection.document.trimHeightIn)}
+        </dd>
+      </div>
+      <div className={cell}>
+        <dt className="text-xs text-ink-muted">{t('documentBleed')}</dt>
+        <dd className="mt-0.5 text-lg font-semibold">{intent ? (intent.bleed ? t('statBleedYes') : t('statBleedNo')) : '–'}</dd>
+      </div>
+    </dl>
   );
 }
 
-/** Pages / trim / bleed / geometry. Shown below the verdict so the answer
- * comes first. */
-export function DocumentDetails({ inspection, intent }: { inspection: InspectionResult; intent: UserIntent | null }) {
+/** Geometry status and notes (Details tab). Partial geometry is information,
+ * never a failure. */
+export function GeometryDetails({ inspection }: { inspection: InspectionResult }) {
   const { t } = useI18n();
-  const { formatPair } = useUnit();
   const geo = inspection.geometry.status;
   return (
-    <section aria-label={t('documentGeometry')} className="space-y-3">
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <div>
-          <dt className="text-xs text-ink-muted">{t('documentPages')}</dt>
-          <dd className="font-mono">{inspection.document.pageCount}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-muted">{t('documentTrim')}</dt>
-          <dd className="font-mono">
-            {formatPair(inspection.document.trimWidthIn, inspection.document.trimHeightIn)}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-muted">{t('documentBleed')}</dt>
-          <dd>{intent ? (intent.bleed ? t('bleedYes') : t('bleedNo')) : '–'}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-muted">{t('documentGeometry')}</dt>
-          <dd>
-            {geo === 'complete' && t('geometryComplete')}
-            {geo === 'partial' && t('geometryPartial')}
-            {geo === 'unavailable' && t('geometryUnavailable')}
-          </dd>
-        </div>
-      </dl>
+    <section aria-label={t('documentGeometry')} className="space-y-2 rounded-2xl border border-border bg-bg p-4 text-sm shadow-card">
+      <p>
+        <span className="text-ink-muted">{t('documentGeometry')}: </span>
+        <span className="font-semibold">
+          {geo === 'complete' && t('geometryComplete')}
+          {geo === 'partial' && t('geometryPartial')}
+          {geo === 'unavailable' && t('geometryUnavailable')}
+        </span>
+      </p>
       {geo === 'partial' && <p className="text-xs text-ink-muted">{t('geometryPartialHint')}</p>}
       {geo === 'unavailable' && <p className="text-xs text-ink-muted">{t('geometryUnavailableHint')}</p>}
       {!inspection.document.pageSizeConsistent && <p className="text-xs text-ink-muted">{t('pagesInconsistent')}</p>}

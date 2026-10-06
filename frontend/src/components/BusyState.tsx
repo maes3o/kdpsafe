@@ -1,12 +1,14 @@
-/** Honest indeterminate state (no fake percentages). */
+/** Honest indeterminate progress: a spinning ring, no fake percentages or
+ * fake steps. */
 export function BusyState({ title, detail }: { title: string; detail?: string }) {
   return (
-    <div role="status" aria-live="polite" className="rounded-lg border border-border bg-bg-panel p-4">
-      <p className="font-medium">{title}</p>
-      {detail && <p className="mt-1 text-sm text-ink-muted">{detail}</p>}
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded bg-bg-hover" aria-hidden="true">
-        <div className="indeterminate-bar h-full w-1/3 rounded bg-accent" />
-      </div>
+    <div role="status" aria-live="polite" className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-bg p-6 text-center shadow-card">
+      <span className="relative inline-flex h-16 w-16 items-center justify-center" aria-hidden="true">
+        <span className="absolute inset-0 rounded-full border-4 border-accent-soft" />
+        <span className="spin-ring absolute inset-0 rounded-full border-4 border-transparent border-t-accent" />
+      </span>
+      <p className="text-base font-semibold">{title}</p>
+      {detail && <p className="text-sm text-ink-muted">{detail}</p>}
     </div>
   );
 }

@@ -21,7 +21,7 @@ async function fillSettings(page, { w = '6', h = '9', bleed = 'no' } = {}) {
   await inputs.nth(0).fill(w);
   await inputs.nth(1).fill(h);
   await page.getByRole('radio', { name: bleed === 'yes' ? /With bleed/ : /No bleed/ }).check();
-  await page.getByRole('button', { name: /Run preflight|Запустити перевірку/ }).click();
+  await page.getByRole('button', { name: /Check PDF|Перевірити PDF/ }).click();
 }
 
 (async () => {
@@ -46,7 +46,7 @@ async function fillSettings(page, { w = '6', h = '9', bleed = 'no' } = {}) {
   check((await verdict().getAttribute('data-verdict')) === 'READY', 'ready.pdf -> READY');
   await page.getByTestId('verification-card').waitFor({ timeout: 30000 });
   check((await page.getByTestId('verification-card').getAttribute('data-after')) === 'null', 'READY doc -> VERIFIED with after:null');
-  check(await page.getByRole('button', { name: 'Download verified PDF' }).isEnabled(), 'verified PDF download enabled');
+  check(await page.getByRole('button', { name: 'Download verified PDF' }).first().isEnabled(), 'verified PDF download enabled');
   await page.waitForSelector('[data-page="1"] canvas');
   check((await page.locator('[data-page="1"] svg line, [data-page="1"] svg rect').count()) > 0, 'geometry overlay drawn');
   await page.screenshot({ path: '/tmp/e2e-ready.png' });
@@ -57,14 +57,14 @@ async function fillSettings(page, { w = '6', h = '9', bleed = 'no' } = {}) {
   await verdict().waitFor({ timeout: 30000 });
   check((await verdict().getAttribute('data-verdict')) === 'NEEDS_ATTENTION', 'autofix.pdf -> NEEDS_ATTENTION');
   await page.getByTestId('autofix-panel').waitFor();
-  check(await page.getByRole('button', { name: 'Download verified PDF' }).isDisabled(), 'download locked before apply');
+  check((await page.getByRole('button', { name: 'Download verified PDF' }).count()) === 0, 'no verified download offered before apply');
   await page.screenshot({ path: '/tmp/e2e-needs.png' });
-  await page.getByRole('button', { name: /Apply fix and re-check/ }).click();
+  await page.getByRole('button', { name: /Fix automatically and re-check/ }).click();
   await page.getByTestId('verification-card').waitFor({ timeout: 60000 });
   const ver = await page.getByTestId('verification-card').getAttribute('data-verification');
   check(ver === 'VERIFIED', `autofix applied in browser -> verification ${ver}`);
   check((await verdict().getAttribute('data-verdict')) === 'READY', 'AFTER verdict READY');
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download verified PDF' }).click()]);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download verified PDF' }).first().click()]);
   const fs = require('node:fs');
   const p = await dl.path();
   const head = fs.readFileSync(p).subarray(0, 5).toString();

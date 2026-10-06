@@ -48,5 +48,10 @@ export async function uploadAndRun(
   await user.type(await screen.findByLabelText(/Trim width/), settings.w ?? '6');
   await user.type(screen.getByLabelText(/Trim height/), settings.h ?? '9');
   await user.click(screen.getByRole('radio', { name: settings.bleed === 'yes' ? /With bleed/ : /No bleed/ }));
-  await user.click(screen.getByRole('button', { name: 'Run preflight' }));
+  await user.click(screen.getByRole('button', { name: 'Check PDF' }));
+}
+
+/** Open the Details tab (where geometry, the locked download and technical info live). */
+export async function openDetails(user: ReturnType<typeof userEvent.setup>, screen: typeof import('@testing-library/react').screen) {
+  await user.click(screen.getByRole('tab', { name: /Details/ }));
 }

@@ -232,7 +232,7 @@ export function PdfViewer({ pdfBytes, inspection, marks, activeMarkId, focus, on
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-viewer" aria-label="PDF">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-bg-panel px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-bg px-3 py-2">
         <div className="flex items-center gap-1" role="group" aria-label={t('viewerPageInput')}>
           <button type="button" className={btn} onClick={() => goToPage(currentPage - 1)} disabled={!pages || currentPage <= 0} aria-label={t('viewerPrev')} title={t('viewerPrev')}>
             ‹

@@ -8,7 +8,11 @@ import { ambiguousEntries, applyablePlans, buildMarks, planId } from './workspac
 import { baseName, buildReport, downloadBlob } from './workspace/report';
 import { EmptyState } from './components/EmptyState';
 import { BusyState } from './components/BusyState';
-import { DocumentDetails, DocumentHeader } from './components/DocumentSummary';
+import { DocumentStats, GeometryDetails } from './components/DocumentSummary';
+import { FileCard } from './components/FileCard';
+import { TabPanel, Tabs } from './components/Tabs';
+import { useMediaQuery } from './hooks';
+import { IconArrowDown, IconDownload } from './components/icons';
 import { SettingsForm } from './components/SettingsForm';
 import { VerdictCard } from './components/VerdictCard';
 import { VerificationCard } from './components/VerificationCard';
@@ -20,7 +24,7 @@ import { TechnicalDetails } from './components/TechnicalDetails';
 import { ErrorNotice } from './components/ErrorNotice';
 import { PdfViewer } from './components/viewer/PdfViewer';
 import type { ViewerFocus, ViewerMark } from './components/viewer/types';
-import { sectionTitle } from './components/ui';
+import { btnDark, card } from './components/ui';
 
 function intentSummary(intent: UserIntent, t: ReturnType<typeof useI18n>['t'], formatPair: (w: number, h: number) => string): string {
   const dir = intent.readingDirection === 'ltr' ? t('readingLtr') : intent.readingDirection === 'rtl' ? t('readingRtl') : null;
@@ -44,6 +48,8 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
   const [focus, setFocus] = useState<ViewerFocus | null>(null);
   // Active issue is only valid for the result it was picked from.
   const [active, setActive] = useState<{ id: string; owner: unknown } | null>(null);
+  const [tab, setTab] = useState<'issues' | 'preview' | 'details'>('issues');
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const nonce = useRef(0);
   const viewerBox = useRef<HTMLDivElement>(null);
 
@@ -61,7 +67,11 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
   const focusOn = (id: string, pageIndex: number, bbox?: BBoxPt) => {
     setActive({ id, owner: viewInspection });
     setFocus({ pageIndex, bbox, nonce: ++nonce.current });
-    if (window.matchMedia?.('(max-width: 1023px)').matches) viewerBox.current?.scrollIntoView({ block: 'start' });
+    // On narrow screens the document lives in its own tab.
+    if (!isDesktop) {
+      setTab('preview');
+      viewerBox.current?.scrollIntoView?.({ block: 'start' });
+    }
   };
 
   const activePlanIndex = useMemo(() => {
@@ -87,23 +97,28 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
     const notice = failure ? (failure.code === 'notPdf' ? t('errorNotPdf') : `${t('errorRead')} ${failure.message}`) : null;
     return <EmptyState onFile={ws.openFile} notice={notice} />;
   }
-  if (!file) return <div className="p-6"><BusyState title={t('readingFile')} /></div>;
+  if (!file) return <div className="mx-auto w-full max-w-md p-6"><BusyState title={t('readingFile')} /></div>;
 
   const applyable = shown ? applyablePlans(inspection!) : [];
   const ambiguous = shown ? ambiguousEntries(shown) : [];
   const working = busy === 'preflight' || busy === 'autofix';
   const canDownloadPdf = fix?.verification === 'VERIFIED';
-
   const intentSub = intent ? intentSummary(intent, t, formatPair) : null;
+
+  // The preview tab only exists on narrow screens (desktop always shows it).
+  const activeTab = isDesktop && tab === 'preview' ? 'issues' : tab;
+  const issueCount = shown ? shown.violations.length + shown.categories.margins.manualReview.length : 0;
+  const viewerOnNarrow = !!inspection && activeTab === 'preview';
+
   const toolbarExtra = fixedAvailable ? (
-    <div role="group" aria-label={`${t('viewOriginal')} / ${t('viewFixed')}`} className="inline-flex overflow-hidden rounded-md border border-border-strong">
+    <div role="group" aria-label={`${t('viewOriginal')} / ${t('viewFixed')}`} className="inline-flex rounded-full bg-bg-hover p-0.5">
       {([false, true] as const).map((fixedMode) => (
         <button
           key={String(fixedMode)}
           type="button"
           aria-pressed={state.showFixed === fixedMode}
           onClick={() => ws.setShowFixed(fixedMode)}
-          className={`px-2.5 py-1 text-xs font-medium ${state.showFixed === fixedMode ? 'bg-accent text-accent-ink' : 'bg-bg hover:bg-bg-hover'}`}
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${state.showFixed === fixedMode ? 'bg-bg text-accent shadow-sm' : 'text-ink-muted'}`}
         >
           {fixedMode ? t('viewFixed') : t('viewOriginal')}
         </button>
@@ -111,34 +126,30 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
     </div>
   ) : null;
 
+  const downloadPdf = () => downloadBlob(fix!.outputBytes.slice(), `${baseName(file.name)}-verified.pdf`, 'application/pdf');
+  const downloadReport = () =>
+    downloadBlob(
+      JSON.stringify(buildReport({ fileName: file.name, intent: intent!, inspection: inspection!, fix }), null, 2),
+      `${baseName(file.name)}-kdpsafe-report.json`,
+      'application/json'
+    );
+
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(360px,420px)_minmax(0,1fr)] lg:overflow-hidden">
-      <div ref={viewerBox} className={`order-1 min-h-0 border-b border-border lg:order-2 lg:h-auto lg:border-b-0 lg:border-l ${inspection ? 'h-[60vh]' : 'h-[38vh]'}`}>
-        <PdfViewer
-          pdfBytes={viewBytes}
-          inspection={viewInspection}
-          marks={marks}
-          activeMarkId={activeId}
-          focus={focus}
-          onDocumentInfo={fixedView ? undefined : ws.setDocInfo}
-          toolbarExtra={toolbarExtra}
-        />
-      </div>
+    <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(380px,460px)_minmax(0,1fr)] lg:overflow-hidden">
+      <aside aria-label="KDPSafe" className="order-1 min-h-0 space-y-4 bg-bg-panel p-4 lg:overflow-y-auto">
+        <FileCard file={file} pageCount={state.docInfo?.pageCount ?? inspection?.document.pageCount ?? null} onRemove={ws.reset} />
 
-      <aside aria-label="KDPSafe" className="order-2 min-h-0 space-y-5 overflow-y-auto bg-bg p-4 lg:order-1">
-        <DocumentHeader file={file} onReplace={ws.reset} />
-
-        <details open={!intent} className="rounded-lg border border-border">
-          <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 px-3 py-2">
-            <span className={sectionTitle}>{t('settingsTitle')}</span>
+        <details open={!intent} className={card}>
+          <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 px-4 py-3">
+            <span className="text-base font-semibold">{t('settingsTitle')}</span>
             {intentSub && <span className="font-mono text-xs text-ink-muted">{intentSub}</span>}
           </summary>
-          <div className="border-t border-border p-3">
+          <div className="border-t border-border p-4">
             <SettingsForm current={intent} docInfo={state.docInfo} onSubmit={(i) => void ws.runIntent(i)} />
           </div>
         </details>
 
-        {busy === 'preflight' && <BusyState title={t('runningPreflight')} detail={t('runningPreflightDetail')} />}
+        {busy === 'preflight' && <BusyState title={t('progressTitle')} detail={t('runningPreflightDetail')} />}
         {busy === 'autofix' && <BusyState title={t('applyingFix')} detail={t('applyingFixDetail')} />}
 
         {failure?.stage === 'preflight' && (
@@ -146,17 +157,33 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
         )}
 
         {shown && inspection && (
-          <div inert={working} className={`space-y-5 ${working ? 'opacity-50' : ''}`}>
+          <div inert={working} className={`space-y-4 ${working ? 'opacity-50' : ''}`}>
             <VerdictCard
               verdict={shown.verdict}
               confirmedCount={shown.violations.length}
               manualCount={shown.categories.margins.manualReview.length}
-            />
+            >
+              {canDownloadPdf && (
+                <button type="button" className={`${btnDark} w-full`} onClick={downloadPdf}>
+                  <IconDownload size={18} />
+                  {t('downloadPdf')}
+                </button>
+              )}
+              {!canDownloadPdf && issueCount > 0 && (
+                <button type="button" className={`${btnDark} w-full`} onClick={() => setTab('issues')}>
+                  {t('showIssues')}
+                  <IconArrowDown size={18} />
+                </button>
+              )}
+            </VerdictCard>
+
             {busy === 'verifying' && <BusyState title={t('verifying')} />}
             {fix && <VerificationCard fix={fix} onDiscard={ws.discardFix} />}
             {(failure?.stage === 'autofix' || failure?.stage === 'verify') && (
               <ErrorNotice failure={failure} onDismiss={ws.dismissFailure} />
             )}
+
+            <DocumentStats inspection={shown} intent={intent} />
 
             {ambiguous.length > 0 && intent && (
               <OrientationResolver
@@ -176,28 +203,51 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
               />
             )}
 
-            <DocumentDetails inspection={shown} intent={intent} />
-
-            <IssueList inspection={shown} afterFix={fixedAvailable} activeId={activeId} onFocus={focusOn} />
-
-            <DownloadPanel
-              canDownloadPdf={canDownloadPdf}
-              pending={busy === 'verifying'}
-              onDownloadPdf={() => downloadBlob(fix!.outputBytes.slice(), `${baseName(file.name)}-verified.pdf`, 'application/pdf')}
-              onDownloadReport={() =>
-                downloadBlob(
-                  JSON.stringify(buildReport({ fileName: file.name, intent: intent!, inspection, fix }), null, 2),
-                  `${baseName(file.name)}-kdpsafe-report.json`,
-                  'application/json'
-                )
-              }
+            <Tabs
+              label={t('tabIssues')}
+              active={activeTab}
+              onChange={setTab}
+              tabs={[
+                { id: 'issues', label: t('tabIssues'), badge: issueCount },
+                ...(isDesktop ? [] : [{ id: 'preview' as const, label: t('tabPreview') }]),
+                { id: 'details', label: t('tabDetails') },
+              ]}
             />
 
-            <p className="text-xs text-ink-muted">{t('scopeNote')}</p>
-            <TechnicalDetails inspection={shown} fix={fix} />
+            {activeTab === 'issues' && (
+              <TabPanel id="issues">
+                <IssueList inspection={shown} afterFix={fixedAvailable} activeId={activeId} onFocus={focusOn} />
+              </TabPanel>
+            )}
+            {activeTab === 'details' && (
+              <TabPanel id="details">
+                <GeometryDetails inspection={shown} />
+                <DownloadPanel canDownloadPdf={canDownloadPdf} pending={busy === 'verifying'} onDownloadPdf={downloadPdf} onDownloadReport={downloadReport} />
+                <p className="text-xs text-ink-muted">{t('scopeNote')}</p>
+                <TechnicalDetails inspection={shown} fix={fix} />
+              </TabPanel>
+            )}
           </div>
         )}
       </aside>
+
+      {/* Always mounted (it loads the PDF and reports its page size); shown
+          beside the panel on desktop, as the Preview tab on narrow screens. */}
+      <div
+        ref={viewerBox}
+        id="panel-preview"
+        className={`order-2 min-h-0 border-t border-border lg:block lg:border-l lg:border-t-0 ${viewerOnNarrow ? 'block h-[75vh]' : 'hidden'}`}
+      >
+        <PdfViewer
+          pdfBytes={viewBytes}
+          inspection={viewInspection}
+          marks={marks}
+          activeMarkId={activeId}
+          focus={focus}
+          onDocumentInfo={fixedView ? undefined : ws.setDocInfo}
+          toolbarExtra={toolbarExtra}
+        />
+      </div>
     </div>
   );
 }

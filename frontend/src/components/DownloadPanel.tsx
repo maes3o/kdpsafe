@@ -1,5 +1,6 @@
 import { useI18n } from '../i18n/context';
-import { btnPrimary, btnSecondary, sectionTitle } from './ui';
+import { IconDownload } from './icons';
+import { btnDark, btnSecondary, sectionTitle } from './ui';
 
 /** The verified PDF is offered only when the engine's verification says
  * VERIFIED; the report (the engine's own results as JSON) whenever a result
@@ -22,7 +23,8 @@ export function DownloadPanel({
         {t('downloadsTitle')}
       </h3>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={btnPrimary} disabled={!canDownloadPdf} onClick={onDownloadPdf}>
+        <button type="button" className={btnDark} disabled={!canDownloadPdf} onClick={onDownloadPdf}>
+          <IconDownload size={18} />
           {t('downloadPdf')}
         </button>
         <button type="button" className={btnSecondary} onClick={onDownloadReport}>

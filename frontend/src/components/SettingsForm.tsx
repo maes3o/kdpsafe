@@ -4,7 +4,8 @@ import { inToUnit, unitToIn, useUnit, type Unit } from '../units/context';
 import type { UserIntent } from '../engine/types';
 import type { DocInfo } from '../workspace/useWorkspace';
 import { TRIM_PRESETS, matchPreset, suggestFromPageSize } from '../workspace/kdpSizes';
-import { btnGhost, btnPrimary, inputCls, sectionTitle } from './ui';
+import { IconArrow } from './icons';
+import { btnGhost, btnPrimary, inputCls } from './ui';
 
 type Direction = 'unspecified' | 'ltr' | 'rtl';
 
@@ -53,9 +54,9 @@ const sameIntent = (a: UserIntent | null, b: UserIntent | null) => JSON.stringif
 function PageDiagram({ bleed }: { bleed: boolean }) {
   return (
     <svg width="44" height="56" viewBox="0 0 44 56" aria-hidden="true" className="shrink-0">
-      {bleed && <rect x="1" y="1" width="42" height="54" className="fill-none stroke-ink-muted" strokeDasharray="4 2" />}
-      <rect x="6" y="6" width="32" height="44" className="fill-bg stroke-ink" strokeWidth="1.5" />
-      <rect x="11" y="11" width="22" height="34" className="fill-none stroke-ink-muted" strokeDasharray="1.5 2.5" />
+      {bleed && <rect x="1" y="1" width="42" height="54" rx="2" className="fill-status-error-soft stroke-status-error" strokeDasharray="4 2" />}
+      <rect x="6" y="6" width="32" height="44" rx="1" className="fill-bg stroke-ink-muted" strokeWidth="1.5" />
+      <rect x="11" y="11" width="22" height="34" className="fill-none stroke-accent" strokeDasharray="1.5 2.5" />
     </svg>
   );
 }
@@ -75,15 +76,15 @@ function BleedOption({
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${
-        checked ? 'border-ink bg-bg-panel' : 'border-border hover:bg-bg-hover'
+      className={`relative flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 p-3 text-center ${
+        checked ? 'border-accent bg-accent-soft' : 'border-border bg-bg hover:bg-bg-hover'
       }`}
     >
-      <input type="radio" name="bleed" value={value} checked={checked} onChange={onSelect} className="mt-1 accent-ink" />
+      <input type="radio" name="bleed" value={value} checked={checked} onChange={onSelect} className="absolute right-2.5 top-2.5 h-4 w-4 accent-accent" />
       <PageDiagram bleed={value === 'yes'} />
       <span className="block text-sm">
-        <span className="block font-medium">{title}</span>
-        <span className="block text-ink-muted">{body}</span>
+        <span className="block font-semibold">{title}</span>
+        <span className="mt-0.5 block text-xs text-ink-muted">{body}</span>
       </span>
     </label>
   );
@@ -104,7 +105,7 @@ export function SettingsForm({
   docInfo: DocInfo | null;
   onSubmit: (intent: UserIntent) => void;
 }) {
-  const { t } = useI18n();
+  const { t, formatNumber } = useI18n();
   const { unit, setUnit, unitLabel, formatPair } = useUnit();
   const [draft, setDraft] = useState<Draft>(() => toDraft(current, unit));
   const live = current !== null;
@@ -144,6 +145,10 @@ export function SettingsForm({
   const presetValue = preset ? preset.id : draft.width === '' && draft.height === '' ? '' : 'custom';
   const suggestion = docInfo ? suggestFromPageSize(docInfo.firstPageWidthIn, docInfo.firstPageHeightIn) : null;
   const sizeName = formatPair;
+  const formatPairIn = (w: number, h: number, u: Unit) => {
+    const f = (v: number) => formatNumber(roundTo(inToUnit(v, u), digitsFor(u)));
+    return `${f(w)} × ${f(h)} ${u === 'mm' ? t('mmShort') : t('inchesShort')}`;
+  };
 
   function applyPreset(id: string) {
     if (id === 'custom' || id === '') return;
@@ -168,9 +173,12 @@ export function SettingsForm({
     },
   });
 
+  const otherUnitPair = unit === 'in' ? 'mm' : 'in';
+  const selectedPreset = preset ?? null;
+
   return (
     <form
-      className="space-y-4"
+      className="space-y-5"
       onSubmit={(e) => {
         e.preventDefault();
         if (intent) onSubmit(intent);
@@ -178,29 +186,40 @@ export function SettingsForm({
     >
       {!live && <p className="text-sm text-ink-muted">{t('settingsIntro')}</p>}
 
+      {/* ---- units ---- */}
+      <div role="group" aria-label={t('unitsLabel')} className="grid grid-cols-2 gap-1 rounded-xl bg-bg-hover p-1">
+        {(['in', 'mm'] as const).map((u) => (
+          <button
+            key={u}
+            type="button"
+            aria-pressed={unit === u}
+            onClick={() => changeUnit(u)}
+            className={`rounded-lg px-3 py-2 text-sm font-semibold ${unit === u ? 'bg-accent text-accent-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+          >
+            {u === 'in' ? t('unitIn') : t('unitMm')}
+          </button>
+        ))}
+      </div>
+
       {/* ---- trim size ---- */}
       <fieldset className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <legend className={sectionTitle}>{t('sizeLabel')}</legend>
-          <div role="group" aria-label={t('unitsLabel')} className="inline-flex overflow-hidden rounded-md border border-border-strong text-xs">
-            {(['in', 'mm'] as const).map((u) => (
-              <button
-                key={u}
-                type="button"
-                aria-pressed={unit === u}
-                onClick={() => changeUnit(u)}
-                className={`px-2.5 py-1 font-medium ${unit === u ? 'bg-accent text-accent-ink' : 'bg-bg hover:bg-bg-hover'}`}
-              >
-                {u === 'in' ? t('unitIn') : t('unitMm')}
-              </button>
-            ))}
-          </div>
-        </div>
+        <legend className="text-base font-semibold">{t('sizeLabel')}</legend>
 
-        <label className="block">
+        <label className="relative block">
           <span className="sr-only">{t('sizePresetLabel')}</span>
+          <span className="flex items-center justify-between gap-2 rounded-xl border border-border-strong bg-bg px-3.5 py-2.5">
+            <span className="block">
+              <span className="block text-sm font-semibold">{selectedPreset ? formatPair(selectedPreset.widthIn, selectedPreset.heightIn) : t('sizeChoose')}</span>
+              {selectedPreset && (
+                <span className="block font-mono text-xs text-ink-muted">
+                  ({formatPairIn(selectedPreset.widthIn, selectedPreset.heightIn, otherUnitPair)})
+                </span>
+              )}
+            </span>
+            <span aria-hidden="true" className="text-ink-muted">⌄</span>
+          </span>
           <select
-            className={`${inputCls} font-sans`}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             value={presetValue}
             onChange={(e) => applyPreset(e.target.value)}
             aria-label={t('sizePresetLabel')}
@@ -217,23 +236,29 @@ export function SettingsForm({
           </select>
         </label>
 
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block">
-            <span className="text-xs text-ink-muted">
-              {t('trimWidth')} ({unitLabel})
-            </span>
-            <input className={`${inputCls} mt-1`} {...numberProps('width')} />
-          </label>
-          <label className="block">
-            <span className="text-xs text-ink-muted">
-              {t('trimHeight')} ({unitLabel})
-            </span>
-            <input className={`${inputCls} mt-1`} {...numberProps('height')} />
-          </label>
-        </div>
+        <details open={!preset} className="rounded-xl border border-border bg-bg">
+          <summary className="flex cursor-pointer items-center justify-between px-3.5 py-2.5 text-sm font-medium">
+            {t('sizeCustom')}
+            <span aria-hidden="true" className="text-ink-muted">›</span>
+          </summary>
+          <div className="grid grid-cols-2 gap-3 border-t border-border p-3.5">
+            <label className="block">
+              <span className="text-xs text-ink-muted">
+                {t('trimWidth')} ({unitLabel})
+              </span>
+              <input className={`${inputCls} mt-1`} {...numberProps('width')} />
+            </label>
+            <label className="block">
+              <span className="text-xs text-ink-muted">
+                {t('trimHeight')} ({unitLabel})
+              </span>
+              <input className={`${inputCls} mt-1`} {...numberProps('height')} />
+            </label>
+          </div>
+        </details>
 
         {docInfo && (
-          <p className="rounded-md bg-bg-panel p-2 text-xs text-ink-muted">
+          <p className="rounded-xl bg-accent-soft p-3 text-xs">
             {suggestion ? (
               <>
                 {t('sizeSuggest', {
@@ -260,9 +285,7 @@ export function SettingsForm({
                 </button>
               </>
             ) : (
-              t('detectedPageSize', {
-                size: formatPair(docInfo.firstPageWidthIn, docInfo.firstPageHeightIn),
-              })
+              t('detectedPageSize', { size: formatPair(docInfo.firstPageWidthIn, docInfo.firstPageHeightIn) })
             )}
           </p>
         )}
@@ -271,15 +294,17 @@ export function SettingsForm({
 
       {/* ---- bleed ---- */}
       <fieldset className="space-y-2">
-        <legend className={sectionTitle}>{t('bleedLabel')}</legend>
-        <BleedOption value="no" checked={draft.bleed === 'no'} title={t('bleedNoTitle')} body={t('bleedNoBody')} onSelect={() => update({ bleed: 'no' }, true)} />
-        <BleedOption value="yes" checked={draft.bleed === 'yes'} title={t('bleedYesTitle')} body={t('bleedYesBody')} onSelect={() => update({ bleed: 'yes' }, true)} />
-        <p className="text-xs text-ink-muted">{t('bleedHint')}</p>
+        <legend className="text-base font-semibold">{t('bleedLabel')}</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <BleedOption value="no" checked={draft.bleed === 'no'} title={t('bleedNoTitle')} body={t('bleedNoBody')} onSelect={() => update({ bleed: 'no' }, true)} />
+          <BleedOption value="yes" checked={draft.bleed === 'yes'} title={t('bleedYesTitle')} body={t('bleedYesBody')} onSelect={() => update({ bleed: 'yes' }, true)} />
+        </div>
+        <p className="rounded-xl bg-accent-soft p-3 text-xs">{t('bleedHint')}</p>
       </fieldset>
 
       {/* ---- reading direction ---- */}
       <label className="block">
-        <span className={sectionTitle}>{t('readingDirection')}</span>
+        <span className="text-base font-semibold">{t('readingDirection')}</span>
         <select
           className={`${inputCls} mt-1 font-sans`}
           value={draft.direction}
@@ -293,7 +318,7 @@ export function SettingsForm({
       </label>
 
       <details className="text-sm">
-        <summary className="cursor-pointer text-ink-muted">{t('helpTitle')}</summary>
+        <summary className="cursor-pointer font-medium text-accent">{t('helpTitle')}</summary>
         <div className="mt-2 space-y-2 text-xs text-ink-muted">
           <p>{t('helpTrim')}</p>
           <p>{t('helpBleed')}</p>
@@ -306,8 +331,9 @@ export function SettingsForm({
       ) : (
         <>
           {!intent && <p className="text-xs text-ink-muted">{t('settingsInvalid')}</p>}
-          <button type="submit" className={btnPrimary} disabled={!intent}>
+          <button type="submit" className={`${btnPrimary} w-full py-3.5 text-base`} disabled={!intent}>
             {t('runPreflight')}
+            <IconArrow />
           </button>
         </>
       )}

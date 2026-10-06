@@ -27,7 +27,7 @@ interface Props {
 function PageGroup({ page, count, defaultOpen, children }: { page: number; count: number; defaultOpen: boolean; children: React.ReactNode }) {
   const { t } = useI18n();
   return (
-    <details open={defaultOpen} className="rounded-md border border-border">
+    <details open={defaultOpen} className="overflow-hidden rounded-2xl border border-border bg-bg shadow-card">
       <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-medium">
         <span>{t('pageNumber', { page })}</span>
         <span className="text-xs font-normal text-ink-muted">{t('pageGroupCount', { n: count })}</span>
@@ -48,7 +48,7 @@ function RowButton({ active, onClick, children }: { active: boolean; onClick: ()
         className={`block w-full px-3 py-2.5 text-left hover:bg-bg-hover ${active ? 'bg-bg-hover' : ''}`}
       >
         {children}
-        <span className="mt-1 block text-xs font-medium underline underline-offset-2">{t("showInPdf")} →</span>
+        <span className="mt-1 block text-xs font-semibold text-accent">{t("showInPdf")} →</span>
       </button>
     </li>
   );

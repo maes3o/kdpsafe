@@ -18,20 +18,20 @@ export function VerificationCard({ fix, onDiscard }: { fix: VerifyAutofixResult;
       data-testid="verification-card"
       data-verification={fix.verification}
       data-after={fix.after === null ? 'null' : 'result'}
-      className={`rounded-lg border p-3 ${tone.border} ${tone.soft}`}
+      className={`rounded-2xl border p-3.5 ${tone.border} ${tone.soft}`}
     >
-      <p className={`flex items-center gap-2 font-display text-base font-bold tracking-wide ${tone.text}`}>
-        <span aria-hidden="true" className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current font-mono text-xs">
+      <p className={`flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide ${tone.text}`}>
+        <span aria-hidden="true" className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white ${tone.solid}`}>
           {glyph}
         </span>
         {verified ? t('verifiedTitle') : t('notVerifiedTitle')}
       </p>
 
       {verified ? (
-        <p className="mt-1 text-sm">{fix.after === null ? t('verifiedAlreadyReady') : t('verifiedAfterFix')}</p>
+        <p className="mt-1.5 text-sm">{fix.after === null ? t('verifiedAlreadyReady') : t('verifiedAfterFix')}</p>
       ) : (
         <>
-          <p className="mt-1 text-sm">{t('notVerifiedBody')}</p>
+          <p className="mt-1.5 text-sm">{t('notVerifiedBody')}</p>
           {fix.reasons.length > 0 && (
             <ul className="mt-2 list-inside list-disc text-sm">
               {fix.reasons.map((r) => (

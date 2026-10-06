@@ -3,6 +3,7 @@ import type { AutofixPlan, BBoxPt } from '../engine/types';
 import { objectLabel } from '../i18n/labels';
 import { useUnit } from '../units/context';
 import { planId } from '../workspace/issues';
+import { IconSparkle } from './icons';
 import { btnPrimary, sectionTitle } from './ui';
 
 const EPS_PT = 0.005;
@@ -40,7 +41,7 @@ export function AutofixPanel({
   }
 
   return (
-    <section data-testid="autofix-panel" aria-labelledby="autofix-title" className="space-y-3 rounded-lg border border-border-strong p-4">
+    <section data-testid="autofix-panel" aria-labelledby="autofix-title" className="space-y-3 rounded-2xl border border-border bg-bg p-4 shadow-card">
       <div>
         <h3 id="autofix-title" className="font-semibold">
           {t('autofixTitle')}
@@ -58,7 +59,7 @@ export function AutofixPanel({
                 type="button"
                 onClick={() => onFocusPlan(id, plan)}
                 aria-pressed={active}
-                className={`w-full rounded-md border p-3 text-left ${active ? 'border-accent bg-bg-hover' : 'border-border hover:bg-bg-hover'}`}
+                className={`w-full rounded-xl border p-3 text-left ${active ? 'border-accent bg-accent-soft' : 'border-border hover:bg-bg-hover'}`}
               >
                 <span className="block text-sm font-medium">
                   {t('pageNumber', { page: plan.pageIndex + 1 })} · {objectLabel(t, plan.type)}
@@ -101,8 +102,9 @@ export function AutofixPanel({
       {applyableCount > 0 && (
         <>
           <p className="text-xs text-ink-muted">{t('autofixSafety')}</p>
-          <button type="button" className={btnPrimary} onClick={onApply} disabled={disabled}>
-            {t('autofixApply')}
+          <button type="button" className={`${btnPrimary} w-full`} onClick={onApply} disabled={disabled}>
+            <IconSparkle />
+            {t('autofixApply')} ({applyableCount})
           </button>
         </>
       )}

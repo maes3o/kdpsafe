@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
-import { makeEngine, renderApp, uploadAndRun, pdfFile } from './test/harness';
+import { makeEngine, openDetails, renderApp, uploadAndRun, pdfFile } from './test/harness';
 import { AMBIGUOUS, MANUAL, NEEDS_ATTENTION, READY, WITH_PLAN, inspection, verifyResult, violation } from './test/fixtures';
 
 vi.mock('./components/viewer/PdfViewer', async () => await import('./test/viewerMock'));
@@ -11,7 +11,7 @@ describe('empty state', () => {
   it('shows the value proposition, an accessible dropzone and the privacy note', () => {
     renderApp(makeEngine({ preflight: () => READY }));
     expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Choose a PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload PDF' })).toBeInTheDocument();
     expect(screen.getByTestId('dropzone')).toBeInTheDocument();
     expect(screen.getByText(/does not send your file to a server/)).toBeInTheDocument();
   });
@@ -30,7 +30,7 @@ describe('manuscript settings', () => {
     const engine = makeEngine({ preflight: () => READY, verify: () => verifyResult({ before: READY }) });
     const { user } = renderApp(engine);
     await user.upload(screen.getByTestId('file-input'), pdfFile());
-    const run = await screen.findByRole('button', { name: 'Run preflight' });
+    const run = await screen.findByRole('button', { name: 'Check PDF' });
     expect(run).toBeDisabled();
     expect(engine.runPreflight).not.toHaveBeenCalled();
   });
@@ -60,7 +60,7 @@ describe('size help', () => {
     expect(screen.getByLabelText(/Trim width/)).toHaveValue('152.4');
     expect(screen.getByLabelText(/Trim height/)).toHaveValue('228.6');
     await user.click(screen.getByRole('radio', { name: /No bleed/ }));
-    await user.click(screen.getByRole('button', { name: 'Run preflight' }));
+    await user.click(screen.getByRole('button', { name: 'Check PDF' }));
     await screen.findByTestId('verdict-card');
     expect(engine.runPreflight.mock.calls[0][1].userIntent.trimSize).toEqual({ widthIn: 6, heightIn: 9 });
     // results are shown in the chosen unit
@@ -91,6 +91,7 @@ describe('verdict states', () => {
 
     expect(await screen.findByTestId('verdict-card')).toHaveAttribute('data-verdict', 'READY');
     expect(verdict()).toHaveTextContent('READY');
+    await openDetails(user, screen);
     expect(screen.getByText('Partly resolved')).toBeInTheDocument();
     expect(screen.getByText(/not a problem by itself/)).toBeInTheDocument();
     expect(screen.queryByText('PROBLEM')).not.toBeInTheDocument();
@@ -99,7 +100,7 @@ describe('verdict states', () => {
     expect(card).toHaveAttribute('data-verification', 'VERIFIED');
     expect(card).toHaveAttribute('data-after', 'null');
     expect(card).toHaveTextContent(/already READY/);
-    expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Download verified PDF' })[0]).toBeEnabled();
   });
 
   it('READY: the PDF is not downloadable until the engine reports VERIFIED', async () => {
@@ -108,9 +109,10 @@ describe('verdict states', () => {
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
     await screen.findByTestId('verdict-card');
+    await openDetails(user, screen);
     expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeDisabled();
     release(verifyResult({ before: READY }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeEnabled());
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Download verified PDF' })[0]).toBeEnabled());
   });
 
   it('NEEDS_ATTENTION: counts, grouped issues, page, side and amount', async () => {
@@ -125,6 +127,7 @@ describe('verdict states', () => {
     expect(within(list).getByText(/Graphic extends 0\.056 in past the safe margin \(top\)/)).toBeInTheDocument();
     expect(within(list).getByText(/Text extends 0\.139 in past the safe margin \(left\)/)).toBeInTheDocument();
     // not READY => no verified download is offered
+    await openDetails(user, screen);
     expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeDisabled();
   });
 
@@ -204,6 +207,7 @@ describe('autofix', () => {
     expect(within(panel).getByText('After')).toBeInTheDocument();
     expect(within(panel).getByText(/Move Graphic 0\.056 in down/)).toBeInTheDocument();
     expect(engine.verifyAutofix).not.toHaveBeenCalled();
+    await openDetails(user, screen);
     expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeDisabled();
   });
 
@@ -221,7 +225,7 @@ describe('autofix', () => {
     });
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
-    await user.click(await screen.findByRole('button', { name: /Apply fix and re-check/ }));
+    await user.click(await screen.findByRole('button', { name: /Fix automatically and re-check/ }));
 
     expect(engine.verifyAutofix).toHaveBeenCalledTimes(1);
     const card = await screen.findByTestId('verification-card');
@@ -229,7 +233,7 @@ describe('autofix', () => {
     expect(card).toHaveAttribute('data-after', 'result');
     expect(card).toHaveTextContent(/checked again/);
     await waitFor(() => expect(verdict()).toHaveAttribute('data-verdict', 'READY'));
-    expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Download verified PDF' })[0]).toBeEnabled();
     // viewer now shows the engine's fixed bytes
     expect(screen.getByTestId('viewer')).toHaveAttribute('data-bytes', '3');
     expect(screen.queryByTestId('autofix-panel')).not.toBeInTheDocument();
@@ -250,13 +254,14 @@ describe('autofix', () => {
     });
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
-    await user.click(await screen.findByRole('button', { name: /Apply fix and re-check/ }));
+    await user.click(await screen.findByRole('button', { name: /Fix automatically and re-check/ }));
 
     const card = await screen.findByTestId('verification-card');
     expect(card).toHaveAttribute('data-verification', 'MANUAL_REVIEW_REQUIRED');
     expect(card).toHaveTextContent('NOT VERIFIED');
     expect(card).toHaveTextContent(/still present after the fix/);
     expect(screen.queryByText('VERIFIED')).not.toBeInTheDocument();
+    await openDetails(user, screen);
     expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeDisabled();
   });
 
@@ -267,7 +272,7 @@ describe('autofix', () => {
     });
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
-    await user.click(await screen.findByRole('button', { name: /Apply fix and re-check/ }));
+    await user.click(await screen.findByRole('button', { name: /Fix automatically and re-check/ }));
     expect(await screen.findByText(/cannot edit safely/)).toBeInTheDocument();
   });
 
@@ -280,9 +285,10 @@ describe('autofix', () => {
     });
     const { user } = renderApp(engine);
     await uploadAndRun(user, screen);
-    await user.click(await screen.findByRole('button', { name: /Apply fix and re-check/ }));
+    await user.click(await screen.findByRole('button', { name: /Fix automatically and re-check/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/The fix failed/);
     expect(verdict()).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION');
+    await openDetails(user, screen);
     expect(screen.getByRole('button', { name: 'Download verified PDF' })).toBeDisabled();
   });
 });
@@ -326,13 +332,13 @@ describe('errors', () => {
 describe('language and theme', () => {
   it('switches Ukrainian <-> English and persists the choice', async () => {
     const { user } = renderApp(makeEngine({ preflight: () => READY }), 'uk');
-    expect(screen.getByRole('button', { name: 'Вибрати PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Завантажити PDF' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'EN' }));
-    expect(screen.getByRole('button', { name: 'Choose a PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Upload PDF' })).toBeInTheDocument();
     expect(localStorage.getItem('kdpsafe.locale')).toBe('en');
     expect(document.documentElement.lang).toBe('en');
     await user.click(screen.getByRole('button', { name: 'UA' }));
-    expect(screen.getByRole('button', { name: 'Вибрати PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Завантажити PDF' })).toBeInTheDocument();
   });
 
   it('renders verdicts in Ukrainian without changing the engine value', async () => {
@@ -342,7 +348,7 @@ describe('language and theme', () => {
     await user.type(await screen.findByLabelText(/Ширина обрізу/), '6');
     await user.type(screen.getByLabelText(/Висота обрізу/), '9');
     await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
-    await user.click(screen.getByRole('button', { name: 'Запустити перевірку' }));
+    await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
     const card = await screen.findByTestId('verdict-card');
     expect(card).toHaveTextContent('ПОТРІБНА УВАГА');
     expect(card).toHaveAttribute('data-verdict', 'NEEDS_ATTENTION');

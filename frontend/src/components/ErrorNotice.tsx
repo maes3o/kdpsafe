@@ -25,7 +25,7 @@ export function ErrorNotice({
   const keys = TITLE[failure.stage];
   const title = failure.code === 'notPdf' ? t('errorNotPdf') : t(keys.title);
   return (
-    <div role="alert" className="rounded-lg border border-status-error bg-status-error-soft p-4">
+    <div role="alert" className="rounded-2xl border border-status-error/50 bg-status-error-soft p-4 shadow-card">
       <p className="flex items-center gap-2 font-semibold text-status-error">
         <span aria-hidden="true" className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current font-mono text-xs">×</span>
         {t('verdictError')}: {title}

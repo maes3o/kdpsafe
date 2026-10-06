@@ -21,7 +21,7 @@ export function OrientationResolver({
     <section
       data-testid="orientation-resolver"
       aria-labelledby="orient-title"
-      className={`rounded-lg border p-4 ${TONE.review.border} ${TONE.review.soft}`}
+      className={`rounded-2xl border p-4 shadow-card ${TONE.review.border} ${TONE.review.soft}`}
     >
       <h3 id="orient-title" className="font-semibold">
         {t('orientTitle')}
