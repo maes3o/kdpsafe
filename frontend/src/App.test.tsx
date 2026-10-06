@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { makeEngine, openDetails, renderApp, uploadAndRun, pdfFile } from './test/harness';
-import { AMBIGUOUS, MANUAL, NEEDS_ATTENTION, READY, TIER1, TIER4, TIER5_SIGNED, UNRESOLVED_30, WITH_PLAN, assessment, inspection, normalizationResult, verifyResult, violation } from './test/fixtures';
+import { AMBIGUOUS, MANUAL, bbox, NEEDS_ATTENTION, READY, TIER1, TIER4, TIER5_SIGNED, UNRESOLVED_30, WITH_PLAN, assessment, inspection, normalizationResult, verifyResult, violation } from './test/fixtures';
 
 vi.mock('./components/viewer/PdfViewer', async () => await import('./test/viewerMock'));
 
@@ -560,5 +560,120 @@ describe('language and theme', () => {
     expect(localStorage.getItem('kdpsafe.theme')).toBe('dark');
     await user.click(screen.getByRole('button', { name: 'Switch to light theme' }));
     expect(document.documentElement.classList.contains('dark')).toBe(false);
+  });
+});
+
+describe('acceptance-pack UX fixes', () => {
+  const trimPage = (pageIndex: number, width: number, height: number) => ({
+    pageIndex,
+    pageNumber: pageIndex + 1,
+    parity: (pageIndex % 2 === 0 ? 'odd' : 'even') as 'odd' | 'even',
+    category: 'CONFLICTING_BOXES' as const,
+    reasons: ['TRIM_BOX_MISMATCH'],
+    rotationDeg: 0,
+    effectiveSizePt: { widthPt: 432, heightPt: 648 },
+    mediaBox: { x: 0, y: 0, width: 432, height: 648 },
+    cropBox: { explicit: false, x: 0, y: 0, width: 432, height: 648 },
+    trimBox: { explicit: true, x: 16, y: 24, width, height },
+    bleedBox: { explicit: false },
+  });
+
+  it('an incorrect TrimBox shows the ACTUAL TrimBox size next to the selected trim (never the selected value as the actual one)', async () => {
+    const engine = makeEngine({
+      preflight: () => UNRESOLVED_30,
+      assess: () =>
+        assessment({
+          category: 'CONFLICTING_BOXES',
+          tier: 5,
+          reasons: ['TRIM_BOX_MISMATCH'],
+          pageSize: { widthIn: 6, heightIn: 9 },
+          pages: Array.from({ length: 30 }, (_, i) => trimPage(i, 400, 600)),
+        }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    const card = await screen.findByTestId('geometry-card');
+    const actual = within(card).getByTestId('geometry-actual-trim');
+    expect(actual).toHaveTextContent('5.556 × 8.333 in'); // 400x600 pt, from the file
+    expect(actual).not.toHaveTextContent('6 × 9');
+    expect(card).toHaveTextContent('Selected trim');
+    expect(card).toHaveTextContent('6 × 9 in'); // the selected trim is still shown, separately
+    expect(card).toHaveTextContent('TrimBox in the file');
+  });
+
+  it('TrimBox sizes that differ between pages are reported as differing, not as one made-up size', async () => {
+    const engine = makeEngine({
+      preflight: () => UNRESOLVED_30,
+      assess: () => assessment({ category: 'CONFLICTING_BOXES', tier: 5, reasons: ['TRIM_BOX_MISMATCH'], pages: [trimPage(0, 400, 600), trimPage(1, 410, 610)] }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    expect(await screen.findByTestId('geometry-actual-trim')).toHaveTextContent('differs between pages');
+  });
+
+  it('no TrimBox in the file -> no "TrimBox in the file" size row', async () => {
+    const engine = makeEngine({ preflight: () => UNRESOLVED_30, assess: () => TIER4 });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    expect(screen.queryByTestId('geometry-actual-trim')).not.toBeInTheDocument();
+  });
+
+  // crop marks: many LEM violations, each completely outside the page's explicit TrimBox
+  const outsideTrim = (i: number, pageIndex: number) =>
+    violation({ side: i % 2 ? 'left' : 'bottom', amountPt: 30 + i, pageIndex, rawBBoxPt: bbox(8, 100 + i, 26, 100.5 + i), visibleBBoxPt: bbox(8, 100 + i, 26, 100.5 + i), severity: 'error' });
+  const markPage = (pageIndex: number) => ({ ...trimPage(pageIndex, 432, 648), trimBox: { explicit: true, x: 36, y: 36, width: 432, height: 648 } });
+
+  it('repeated crop-mark / slug violations are shown as ONE clear message while every raw violation stays in the result and the viewer', async () => {
+    const raw = [...Array.from({ length: 12 }, (_, i) => outsideTrim(i, i % 3)), violation({ pageIndex: 1, rawBBoxPt: bbox(100, 300, 200, 640), visibleBBoxPt: bbox(100, 300, 200, 640) })];
+    const result = inspection({ verdict: 'MANUAL_REVIEW_REQUIRED', violations: raw });
+    const engine = makeEngine({
+      preflight: () => result,
+      assess: () => assessment({ pages: [markPage(0), markPage(1), markPage(2)] }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    const group = await screen.findByTestId('outside-trim-group');
+    expect(group).toHaveTextContent('Objects completely outside the trim area: 12 (pages 1–3)');
+    expect(group).toHaveTextContent(/crop marks, registration marks or slug/);
+    expect(group).toHaveTextContent(/export the PDF again without printer's marks/);
+    // the 12 repeats are not listed one by one; the one object that overlaps the trim keeps its own row
+    const list = screen.getByTestId('issue-list');
+    expect(within(list).getAllByText(/extends .* past the safe margin/)).toHaveLength(1);
+    expect(within(list).getByText(/Confirmed problems \(2\)/)).toBeInTheDocument();
+    // nothing is dropped: the viewer still gets a mark for every raw violation, and the engine result is untouched
+    expect(screen.getByTestId('viewer')).toHaveAttribute('data-marks', String(raw.length));
+    expect(result.violations).toHaveLength(raw.length);
+    expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+  });
+
+  it('a hairline mark straddling the trim edge by <= 0.5pt is grouped; an object reaching 3pt into the trim is not', async () => {
+    const hair = (i: number) => violation({ pageIndex: 0, amountPt: 30, severity: 'error', rawBBoxPt: bbox(35.75, 40 + i, 36.25, 58 + i), visibleBBoxPt: bbox(35.75, 40 + i, 36.25, 58 + i) });
+    const into = violation({ pageIndex: 0, amountPt: 30, severity: 'error', rawBBoxPt: bbox(33, 200, 39, 210), visibleBBoxPt: bbox(33, 200, 39, 210) });
+    const result = inspection({ verdict: 'MANUAL_REVIEW_REQUIRED', violations: [hair(0), hair(1), hair(2), hair(3), into] });
+    const engine = makeEngine({ preflight: () => result, assess: () => assessment({ pages: [markPage(0)] }) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    expect(await screen.findByTestId('outside-trim-group')).toHaveTextContent('Objects completely outside the trim area: 4');
+    expect(within(screen.getByTestId('issue-list')).getAllByText(/extends .* past the safe margin/)).toHaveLength(1);
+  });
+
+  it('a few outside-trim objects, or no explicit TrimBox, are NOT aggregated', async () => {
+    const result = inspection({ verdict: 'MANUAL_REVIEW_REQUIRED', violations: [outsideTrim(0, 0), outsideTrim(1, 0)] });
+    const engine = makeEngine({ preflight: () => result, assess: () => assessment({ pages: [markPage(0)] }) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('issue-list');
+    expect(screen.queryByTestId('outside-trim-group')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('issue-list')).getAllByText(/extends .* past the safe margin/)).toHaveLength(2);
+  });
+
+  it('without an explicit TrimBox nothing is called "outside the trim"', async () => {
+    const result = inspection({ verdict: 'MANUAL_REVIEW_REQUIRED', violations: Array.from({ length: 6 }, (_, i) => outsideTrim(i, 0)) });
+    const engine = makeEngine({ preflight: () => result, assess: () => assessment({ pages: [{ ...markPage(0), trimBox: { explicit: false } }] }) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('issue-list');
+    expect(screen.queryByTestId('outside-trim-group')).not.toBeInTheDocument();
   });
 });

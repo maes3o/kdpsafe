@@ -10,6 +10,7 @@ import type {
   InspectionResult,
   ManualReviewEntry,
   OtherManualReviewEntry,
+  PageGeometryAssessment,
 } from '../engine/types';
 
 export function ambiguousEntries(result: InspectionResult): AmbiguousOrientationEntry[] {
@@ -117,4 +118,64 @@ export function manualDisplayItems(result: InspectionResult): ManualDisplayItem[
     }
   });
   return items;
+}
+
+// ---- display aggregation of "completely outside the trim" violations ----
+
+/** Fewer repeats than this are listed one by one (a single stray object keeps
+ * its exact message). */
+export const OUTSIDE_TRIM_MIN_GROUP = 3;
+
+export const OUTSIDE_TRIM_GROUP_ID = 'vg-outside-trim';
+
+/** Same 0.5pt noise allowance the engine applies to edge comparisons
+ * (lib/margin.js TOLERANCE_PT): a hairline mark that overlaps the trim edge
+ * by less than this still counts as "outside" for display grouping. */
+const OUTSIDE_TRIM_TOLERANCE_PT = 0.5;
+
+export interface OutsideTrimGroup {
+  /** Indices into the engine's violations[] (never removed from the result). */
+  indices: number[];
+  /** 1-based pages the group covers. */
+  pages: number[];
+}
+
+/**
+ * Crop marks, registration marks and slug content lie COMPLETELY outside the
+ * page's explicit TrimBox, and the engine reports every such object as its
+ * own LEM violation (often dozens per page). For display only, those
+ * repeats are summarised as one item. Nothing is dropped: engine.violations,
+ * the viewer marks and the JSON report keep every raw entry. Needs an
+ * explicit TrimBox on the page (otherwise "outside the trim" is unknowable),
+ * and never groups fewer than OUTSIDE_TRIM_MIN_GROUP objects.
+ */
+export function outsideTrimGroup(result: InspectionResult, geometry: PageGeometryAssessment | null): OutsideTrimGroup | null {
+  if (!geometry) return null;
+  const indices: number[] = [];
+  result.violations.forEach((v, i) => {
+    if (v.violation !== 'LEM') return;
+    const t = geometry.pages[v.pageIndex]?.trimBox;
+    if (!t || !t.explicit || t.x === undefined || t.y === undefined || t.width === undefined || t.height === undefined) return;
+    const b = v.visibleBBoxPt;
+    const tol = OUTSIDE_TRIM_TOLERANCE_PT;
+    const outside = b.maxX <= t.x + tol || b.minX >= t.x + t.width - tol || b.maxY <= t.y + tol || b.minY >= t.y + t.height - tol;
+    if (outside) indices.push(i);
+  });
+  if (indices.length < OUTSIDE_TRIM_MIN_GROUP) return null;
+  return { indices, pages: pageNumbers(indices.map((i) => result.violations[i])) };
+}
+
+/** Actual explicit TrimBox size in points: one size for the whole file, or
+ * 'varies' when pages disagree, or null when no page has an explicit TrimBox.
+ * Read from the file's boxes -- never from the user's selected trim. */
+export function actualTrimSizePt(geometry: PageGeometryAssessment): { widthPt: number; heightPt: number } | 'varies' | null {
+  const sizes = new Map<string, { widthPt: number; heightPt: number }>();
+  for (const p of geometry.pages) {
+    const t = p.trimBox;
+    if (t.explicit && t.width !== undefined && t.height !== undefined) {
+      sizes.set(`${t.width.toFixed(2)}x${t.height.toFixed(2)}`, { widthPt: t.width, heightPt: t.height });
+    }
+  }
+  if (sizes.size === 0) return null;
+  return sizes.size === 1 ? [...sizes.values()][0] : 'varies';
 }

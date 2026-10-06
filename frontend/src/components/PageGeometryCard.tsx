@@ -4,6 +4,7 @@ import { useUnit } from '../units/context';
 import type { PageGeometryAssessment } from '../engine/types';
 import type { NormalizationRecord } from '../workspace/useWorkspace';
 import { geometryReasonLabel, safetyCheckLabel } from '../i18n/labels';
+import { actualTrimSizePt } from '../workspace/issues';
 import { btnPrimary, btnSecondary, GLYPH, TONE, sectionTitle } from './ui';
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -79,11 +80,21 @@ export function PageGeometryCard({
   const trimState =
     geometry.trimBox === 'explicit' ? t('geoTrimBoxExplicit') : geometry.trimBox === 'mixed' ? t('geoTrimBoxMixed') : t('geoTrimBoxMissing');
 
+  // The file's own TrimBox size, shown beside (never instead of) the selected trim.
+  const actualTrim = actualTrimSizePt(geometry);
+
   const summary = (
     <dl className="mt-3 space-y-1.5 rounded-xl bg-bg-panel p-3">
       <Row label={t('geoCurrent')}>{pageSize}</Row>
       <Row label={t('geoSelected')}>{selected}</Row>
       <Row label={t('geoTrimBox')}>{trimState}</Row>
+      {actualTrim && (
+        <Row label={t('geoTrimBoxActual')}>
+          <span data-testid="geometry-actual-trim">
+            {actualTrim === 'varies' ? t('geoTrimBoxActualVaries') : formatPair(actualTrim.widthPt / 72, actualTrim.heightPt / 72)}
+          </span>
+        </Row>
+      )}
     </dl>
   );
 
