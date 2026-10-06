@@ -194,6 +194,7 @@ export function Workspace({ createEngine }: { createEngine: () => EngineApi }) {
                 normalization={state.normalization}
                 disabled={working}
                 onApply={() => void ws.normalizeGeometry()}
+                onExpand={(anchor) => void ws.expandPage(anchor)}
                 onUndo={ws.undoNormalization}
               />
             )}

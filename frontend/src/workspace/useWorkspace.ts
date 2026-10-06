@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EngineApi } from '../engine/api';
-import type { InspectionResult, PageGeometryAssessment, SafetyCheck, UserIntent, VerifyAutofixResult } from '../engine/types';
+import type { ExpandAnchor, InspectionResult, PageGeometryAssessment, SafetyCheck, UserIntent, VerifyAutofixResult } from '../engine/types';
 import { applyablePlans } from './issues';
 
 export type Busy = 'reading' | 'preflight' | 'autofix' | 'verifying' | 'normalizing' | null;
@@ -8,8 +8,9 @@ export type FailureStage = 'read' | 'preflight' | 'autofix' | 'verify' | 'normal
 
 export interface Failure {
   stage: FailureStage;
-  /** 'notPdf' is a UI-level format check; everything else carries the raw message. */
-  code?: 'notPdf';
+  /** 'notPdf' is a UI-level format check; 'expandNotReady' = the expanded copy
+   * was verified but the real AFTER preflight was not READY (nothing applied). */
+  code?: 'notPdf' | 'expandNotReady';
   message: string;
 }
 
@@ -21,9 +22,12 @@ export interface DocInfo {
 
 /** Record of an applied (metadata-only) page-box normalization. */
 export interface NormalizationRecord {
-  kind: 'ADD_TRIM_BOX' | 'DEFINE_TRIM_BOX_FROM_BLEED';
+  kind: 'ADD_TRIM_BOX' | 'DEFINE_TRIM_BOX_FROM_BLEED' | 'EXPAND_PAGE';
   pagesChanged: number;
   checks: SafetyCheck[];
+  /** EXPAND_PAGE only. */
+  anchor?: ExpandAnchor;
+  target?: { widthPt: number; heightPt: number };
 }
 
 export interface WorkspaceState {
@@ -217,6 +221,53 @@ export function useWorkspace(createEngine: () => EngineApi) {
     }
   }, [engine, patch, assess, autoVerify]);
 
+  /** Explicit user approval of "Expand page to the selected size" with an
+   * explicit anchor. Adopted ONLY when the engine's saved-bytes invariants
+   * pass AND the real AFTER preflight is READY (checked here as well:
+   * defense in depth); otherwise the original stays the working file. */
+  const expandPage = useCallback(
+    async (anchor: ExpandAnchor) => {
+      const { bytes, intent, geometry } = stateRef.current;
+      if (!bytes || !intent || !geometry?.expand?.eligible) return;
+      const mySeq = ++seq.current;
+      patch({ busy: 'normalizing', failure: null });
+      try {
+        const res = await engine().normalizePageGeometry(bytes, { userIntent: intent, expandPage: { anchor, confirmed: true } });
+        if (mySeq !== seq.current) return;
+        if (res.safety?.failure === 'AFTER_NOT_READY' && res.after) {
+          patch({
+            busy: null,
+            failure: {
+              stage: 'normalize',
+              code: 'expandNotReady',
+              message: `AFTER_NOT_READY: ${res.after.verdict}, confirmed problems ${res.after.violations.length}, manual-review items ${res.after.categories.margins.manualReview.length}`,
+            },
+          });
+          return;
+        }
+        if (!res.applied || !res.after || res.after.verdict !== 'READY' || !res.expand) {
+          patch({ busy: null, failure: { stage: 'normalize', message: res.safety?.failure ?? 'NOT_APPLIED' } });
+          return;
+        }
+        patch({
+          originalBytes: bytes,
+          bytes: res.outputBytes,
+          inspection: res.after,
+          fix: null,
+          showFixed: false,
+          normalization: { kind: 'EXPAND_PAGE', pagesChanged: res.expand.pagesChanged, checks: res.safety?.checks ?? [], anchor: res.expand.anchor, target: res.expand.target },
+          busy: null,
+        });
+        await assess(res.outputBytes, intent, mySeq);
+        if (mySeq !== seq.current) return;
+        await autoVerify(res.outputBytes, intent, res.after, mySeq);
+      } catch (err) {
+        if (mySeq === seq.current) patch({ busy: null, failure: { stage: 'normalize', message: message(err) } });
+      }
+    },
+    [engine, patch, assess, autoVerify]
+  );
+
   /** Back to the user's untouched original (re-analysed from scratch). */
   const undoNormalization = useCallback(() => {
     const { intent } = stateRef.current;
@@ -248,5 +299,5 @@ export function useWorkspace(createEngine: () => EngineApi) {
     setState(INITIAL);
   }, []);
 
-  return { state, openFile, runIntent, normalizeGeometry, undoNormalization, applyFix, discardFix, setShowFixed, setDocInfo, dismissFailure, reset };
+  return { state, openFile, runIntent, normalizeGeometry, expandPage, undoNormalization, applyFix, discardFix, setShowFixed, setDocInfo, dismissFailure, reset };
 }

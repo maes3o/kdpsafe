@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import { makeEngine, openDetails, renderApp, uploadAndRun, pdfFile } from './test/harness';
-import { AMBIGUOUS, MANUAL, bbox, NEEDS_ATTENTION, READY, TIER1, TIER4, TIER5_SIGNED, UNRESOLVED_30, WITH_PLAN, assessment, inspection, normalizationResult, verifyResult, violation } from './test/fixtures';
+import { AMBIGUOUS, EXPANDABLE, MANUAL, bbox, expandApplied, expandOffer, NEEDS_ATTENTION, READY, TIER1, TIER4, TIER5_SIGNED, UNRESOLVED_30, WITH_PLAN, assessment, inspection, normalizationResult, verifyResult, violation } from './test/fixtures';
 
 vi.mock('./components/viewer/PdfViewer', async () => await import('./test/viewerMock'));
 
@@ -675,5 +675,192 @@ describe('acceptance-pack UX fixes', () => {
     await uploadAndRun(user, screen);
     await screen.findByTestId('issue-list');
     expect(screen.queryByTestId('outside-trim-group')).not.toBeInTheDocument();
+  });
+});
+
+describe('expand page (advanced repair #1)', () => {
+  const ORIGINAL = pdfFile();
+  const engineFor = (over: Partial<Parameters<typeof makeEngine>[0]> = {}) =>
+    makeEngine({
+      preflight: (n) => (n === 1 ? UNRESOLVED_30 : READY),
+      assess: (n) => (n === 1 ? EXPANDABLE : assessment()),
+      normalize: () => expandApplied('center', READY),
+      verify: () => verifyResult({ before: READY }),
+      ...over,
+    });
+  const panel = () => screen.getByTestId('expand-panel');
+  const applyBtn = () => within(panel()).getByRole('button', { name: 'Expand page' });
+
+  it('offers the operation with NOTHING pre-selected; nothing is written before explicit anchor + confirmation', async () => {
+    const engine = engineFor();
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    expect(panel()).toHaveAttribute('data-expand-state', 'available');
+    expect(panel()).toHaveTextContent('5.5 × 8.5 in');
+    expect(panel()).toHaveTextContent(/does not know whether this extra white space is acceptable/);
+    expect(panel()).toHaveTextContent(/not scaled, cropped, moved or rewritten/);
+    for (const r of within(panel()).getAllByRole('radio')) expect(r).not.toBeChecked();
+    expect(applyBtn()).toBeDisabled();
+
+    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    expect(applyBtn()).toBeDisabled(); // anchor alone is not confirmation
+    await user.click(within(panel()).getByRole('checkbox'));
+    expect(applyBtn()).toBeEnabled();
+    expect(engine.normalizePageGeometry).not.toHaveBeenCalled();
+  });
+
+  it('CENTER: calls the engine with the explicit anchor + confirmation, shows the engine AFTER READY, neutral card, original kept for undo', async () => {
+    const engine = engineFor();
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('button', { name: 'Review change' }));
+    expect(screen.getByTestId('expand-review')).toHaveTextContent('After: 6 × 9 in');
+    expect(screen.getByTestId('expand-review')).toHaveTextContent('Before: 5.5 × 8.5 in');
+    await user.click(within(panel()).getByRole('checkbox'));
+    await user.click(applyBtn());
+
+    await waitFor(() => expect(engine.normalizePageGeometry).toHaveBeenCalledTimes(1));
+    const [bytes, options] = engine.normalizePageGeometry.mock.calls[0];
+    expect(bytes.length).toBe(new Uint8Array(await ORIGINAL.arrayBuffer()).length);
+    expect(options.expandPage).toEqual({ anchor: 'center', confirmed: true });
+    expect(options.userIntent.trimSize).toEqual({ widthIn: 6, heightIn: 9 });
+
+    await waitFor(() => expect(verdict()).toHaveAttribute('data-verdict', 'READY'));
+    const card = screen.getByTestId('geometry-card');
+    expect(card).toHaveAttribute('data-geometry-state', 'applied');
+    expect(card).toHaveTextContent('Pages expanded to 6 × 9 in on 30 page(s) · anchor: Center');
+    expect(card.outerHTML).not.toMatch(/status-ready/);
+    expect(card).not.toHaveTextContent('✓');
+    expect(card).toHaveTextContent(/Only page boxes were changed/);
+    await screen.findByTestId('verification-card');
+    // the engine verified the NEW bytes
+    expect(engine.verifyAutofix.mock.calls[0][0].length).toBe(5);
+
+    // undo: back to the user's original bytes, re-analysed from scratch
+    await user.click(within(card).getByRole('button', { name: 'Restore original file' }));
+    await waitFor(() => expect(engine.runPreflight).toHaveBeenCalledTimes(2));
+    expect(engine.runPreflight.mock.calls[1][0].length).toBe(engine.runPreflight.mock.calls[0][0].length);
+  });
+
+  it('KEEP-ORIGIN: the other anchor is passed through exactly', async () => {
+    const engine = engineFor({ normalize: () => expandApplied('keep-origin', READY) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    await user.click(within(panel()).getByRole('radio', { name: /Keep origin/ }));
+    await user.click(within(panel()).getByRole('checkbox'));
+    await user.click(applyBtn());
+    await waitFor(() => expect(engine.normalizePageGeometry).toHaveBeenCalledTimes(1));
+    expect(engine.normalizePageGeometry.mock.calls[0][1].expandPage).toEqual({ anchor: 'keep-origin', confirmed: true });
+    await waitFor(() => expect(screen.getByTestId('geometry-card')).toHaveTextContent('anchor: Keep origin'));
+  });
+
+  it('changing the anchor clears the confirmation (a new choice needs a new confirmation)', async () => {
+    const { user } = renderApp(engineFor());
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('checkbox'));
+    expect(applyBtn()).toBeEnabled();
+    await user.click(within(panel()).getByRole('radio', { name: /Keep origin/ }));
+    expect(within(panel()).getByRole('checkbox')).not.toBeChecked();
+    expect(applyBtn()).toBeDisabled();
+  });
+
+  it('AFTER not READY (engine fails closed): no success, original stays, the real reason is shown', async () => {
+    const engine = engineFor({
+      normalize: () => ({
+        ...expandApplied('keep-origin', NEEDS_ATTENTION),
+        applied: false,
+        outputBytes: new Uint8Array([1, 2, 3, 4, 5]),
+        safety: { ok: false, checks: [{ id: 'AFTER_PREFLIGHT_READY', ok: false }], failure: 'AFTER_NOT_READY' },
+        expand: undefined,
+      }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    await user.click(within(panel()).getByRole('radio', { name: /Keep origin/ }));
+    await user.click(within(panel()).getByRole('checkbox'));
+    await user.click(applyBtn());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The expanded file is not READY');
+    expect(alert).toHaveTextContent(/nothing was applied and your original file is still in use/);
+    expect(alert).toHaveTextContent('AFTER_NOT_READY');
+    // still the ORIGINAL working file: manual verdict, the card offers the operation again, no applied state, no download
+    expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+    expect(screen.getByTestId('geometry-card')).toHaveAttribute('data-geometry-state', 'manual');
+    expect(screen.queryByRole('button', { name: 'Download verified PDF' })).not.toBeInTheDocument();
+    expect(engine.verifyAutofix).not.toHaveBeenCalled();
+  });
+
+  it('defense in depth: even if the engine claimed success, a non-READY AFTER is never adopted', async () => {
+    const engine = engineFor({ normalize: () => expandApplied('center', NEEDS_ATTENTION) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('checkbox'));
+    await user.click(applyBtn());
+    await screen.findByRole('alert');
+    expect(screen.getByTestId('geometry-card')).toHaveAttribute('data-geometry-state', 'manual');
+    expect(verdict()).toHaveAttribute('data-verdict', 'MANUAL_REVIEW_REQUIRED');
+  });
+
+  it('a safety failure inside the engine is shown as an error; the file is not modified', async () => {
+    const engine = engineFor({
+      normalize: () => ({ ...expandApplied('center', READY), applied: false, after: null, expand: undefined, safety: { ok: false, checks: [{ id: 'CONTENT_STREAMS_CHANGED', ok: false }], failure: 'CONTENT_STREAMS_CHANGED' } }),
+    });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    await user.click(within(panel()).getByRole('radio', { name: /Center/ }));
+    await user.click(within(panel()).getByRole('checkbox'));
+    await user.click(applyBtn());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Your file was not modified.');
+    expect(alert).toHaveTextContent('CONTENT_STREAMS_CHANGED');
+    expect(screen.getByTestId('geometry-card')).toHaveAttribute('data-geometry-state', 'manual');
+  });
+
+  it('not eligible: the reasons are listed, there is no way to apply', async () => {
+    const offer = expandOffer({ eligible: false, reasons: ['SIGNED', 'HAS_FORMS', 'ROTATED_PAGE', 'MIXED_PAGE_SIZES'], previews: null });
+    const engine = engineFor({ assess: () => assessment({ ...EXPANDABLE, expand: offer }) });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    expect(panel()).toHaveAttribute('data-expand-state', 'unavailable');
+    expect(panel()).toHaveTextContent('Expand page is not available for this file');
+    expect(panel()).toHaveTextContent(/digitally signed/);
+    expect(panel()).toHaveTextContent(/form fields/);
+    expect(panel()).toHaveTextContent(/rotated/);
+    expect(panel()).toHaveTextContent(/different sizes/);
+    expect(within(panel()).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(panel()).queryByRole('radio')).not.toBeInTheDocument();
+    expect(engine.normalizePageGeometry).not.toHaveBeenCalled();
+  });
+
+  it('no offer when no page is smaller than the selected size (A4 stays a plain explanation)', async () => {
+    const engine = engineFor({ assess: () => TIER4 });
+    const { user } = renderApp(engine);
+    await uploadAndRun(user, screen);
+    await screen.findByTestId('geometry-card');
+    expect(screen.queryByTestId('expand-panel')).not.toBeInTheDocument();
+  });
+
+  it('is available in Ukrainian', async () => {
+    const { user } = renderApp(engineFor(), 'uk');
+    await user.upload(screen.getByTestId('file-input'), pdfFile());
+    await user.type(await screen.findByLabelText(/Ширина/), '6');
+    await user.type(screen.getByLabelText(/Висота/), '9');
+    await user.click(screen.getByRole('radio', { name: /Без вильоту/ }));
+    await user.click(screen.getByRole('button', { name: 'Перевірити PDF' }));
+    await screen.findByTestId('geometry-card');
+    expect(panel()).toHaveTextContent('Розширити сторінку до вибраного розміру');
+    expect(panel()).toHaveTextContent('Це ваше рішення.');
+    expect(within(panel()).getByRole('radio', { name: /По центру/ })).toBeInTheDocument();
   });
 });

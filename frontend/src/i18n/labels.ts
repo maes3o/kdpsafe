@@ -60,6 +60,12 @@ export function geometryReasonLabel(t: T, code: string): string {
   return (STRING_KEYS as readonly string[]).includes(key) ? t(key) : t('geoReasonUnknown');
 }
 
+/** Expand-page rejection code -> localized sentence. */
+export function expandReasonLabel(t: T, code: string): string {
+  const key = `expandReason_${code}` as StringKey;
+  return (STRING_KEYS as readonly string[]).includes(key) ? t(key) : t('geoReasonUnknown');
+}
+
 export function safetyCheckLabel(t: T, id: string): string {
   const key = `chk_${id}` as StringKey;
   return (STRING_KEYS as readonly string[]).includes(key) ? t(key) : id;

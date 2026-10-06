@@ -4,6 +4,7 @@
  * compliance is computed here.
  */
 import type {
+  ExpandOffer,
   NormalizationPlan,
   NormalizationResult,
   PageGeometryAssessment,
@@ -153,6 +154,7 @@ export function assessment(over: Partial<PageGeometryAssessment> = {}): PageGeom
     pageSize: { widthIn: 6, heightIn: 9 },
     trimBox: 'explicit',
     plan: null,
+    expand: null,
     ...over,
   };
 }
@@ -212,5 +214,53 @@ export function normalizationResult(over: Partial<NormalizationResult> & Pick<No
     },
     before: null,
     ...over,
+  };
+}
+
+// ---- Expand page (advanced repair #1) ----
+
+
+export const expandOffer = (over: Partial<ExpandOffer> = {}): ExpandOffer => ({
+  applicable: true,
+  eligible: true,
+  reasons: [],
+  target: { widthPt: 432, heightPt: 648 },
+  current: { widthPt: 396, heightPt: 612 },
+  previews: {
+    center: { addedPt: { left: 18, bottom: 18, right: 18, top: 18 } },
+    'keep-origin': { addedPt: { left: 0, bottom: 0, right: 36, top: 36 } },
+  },
+  pageCount: 30,
+  ...over,
+});
+
+/** A smaller-than-selected page: Tier 4 (manual) plus the optional expand offer. */
+export const EXPANDABLE = assessment({
+  category: 'DIFFERENT_SIZE',
+  tier: 4,
+  trimBox: 'missing',
+  reasons: ['SIZE_DIFFERENT'],
+  pageSize: { widthIn: 5.5, heightIn: 8.5 },
+  expand: expandOffer(),
+});
+
+export function expandApplied(anchor: 'center' | 'keep-origin', after: InspectionResult): NormalizationResult {
+  return {
+    applied: true,
+    assessment: EXPANDABLE,
+    outputBytes: new Uint8Array([7, 7, 7, 7, 7]),
+    safety: {
+      ok: true,
+      checks: [
+        { id: 'PAGE_COUNT_UNCHANGED', ok: true },
+        { id: 'CONTENT_STREAMS_BYTE_IDENTICAL', ok: true },
+        { id: 'RESOURCES_UNCHANGED', ok: true },
+        { id: 'AFTER_PREFLIGHT_READY', ok: true },
+      ],
+      failure: null,
+    },
+    before: null,
+    after,
+    expand: { anchor, pagesChanged: 30, target: { widthPt: 432, heightPt: 648 } },
   };
 }

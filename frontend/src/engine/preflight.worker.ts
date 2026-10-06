@@ -32,7 +32,7 @@ export type PreflightWorkerResponse =
 // contract, so results are cast through `unknown` explicitly.
 self.onmessage = async (event: MessageEvent<PreflightWorkerRequest>) => {
   const msg = event.data;
-  const opts = { userIntent: msg.options.userIntent, pageContext: msg.options.pageContext };
+  const opts = { userIntent: msg.options.userIntent, pageContext: msg.options.pageContext, expandPage: msg.options.expandPage };
   try {
     await configurePdfjs();
     const bytes = new Uint8Array(msg.pdfBytes);

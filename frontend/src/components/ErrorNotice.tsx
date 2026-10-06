@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useI18n } from '../i18n/context';
 import type { Failure } from '../workspace/useWorkspace';
 import type { StringKey } from '../i18n/strings';
@@ -23,15 +24,21 @@ export function ErrorNotice({
   onDismiss?: () => void;
 }) {
   const { t } = useI18n();
+  const ref = useRef<HTMLDivElement>(null);
+  // A failure raised by a button far down the page must not go unnoticed.
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [failure]);
   const keys = TITLE[failure.stage];
-  const title = failure.code === 'notPdf' ? t('errorNotPdf') : t(keys.title);
+  const notReady = failure.code === 'expandNotReady';
+  const title = failure.code === 'notPdf' ? t('errorNotPdf') : notReady ? t('errorExpandNotReady') : t(keys.title);
   return (
-    <div role="alert" className="rounded-2xl border border-status-error/50 bg-status-error-soft p-4 shadow-card">
+    <div ref={ref} role="alert" className="rounded-2xl border border-status-error/50 bg-status-error-soft p-4 shadow-card">
       <p className="flex items-center gap-2 font-semibold text-status-error">
         <span aria-hidden="true" className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current font-mono text-xs">×</span>
         {t('verdictError')}: {title}
       </p>
-      {failure.stage !== 'read' && <p className="mt-1 text-sm">{t(keys.body)}</p>}
+      {failure.stage !== 'read' && <p className="mt-1 text-sm">{notReady ? t('errorExpandNotReadyBody') : t(keys.body)}</p>}
       <details className="mt-2 text-sm">
         <summary className="cursor-pointer text-ink-muted">{t('errorTechnical')}</summary>
         <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-ink-muted">{failure.message}</pre>

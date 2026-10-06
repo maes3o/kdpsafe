@@ -295,9 +295,16 @@ export interface PageContext {
   pageNumber?: number;
 }
 
+/** Where the added space goes when a page is expanded (always chosen by the user). */
+export type ExpandAnchor = 'center' | 'keep-origin';
+
 export interface PreflightOptions {
   userIntent: UserIntent;
   pageContext?: PageContext;
+  /** normalizePageGeometry only: run the "Expand page" operation instead of
+   * the Tier 1/2 plan. Both fields are required by the engine; it fails
+   * closed without an explicit anchor and `confirmed: true`. */
+  expandPage?: { anchor: ExpandAnchor | null; confirmed: boolean };
 }
 
 // ---------------------------------------------------------------------
@@ -349,6 +356,21 @@ export interface NormalizationPlan {
   guarantees: { contentStreamsUnchanged: true; scales: false; crops: false; moves: false; rotates: false };
 }
 
+/** The user-initiated "Expand page to the selected size" offer (page boxes
+ * only: no scaling, cropping or content changes). Present only when some
+ * page is smaller than the selected trim. */
+export interface ExpandOffer {
+  applicable: true;
+  /** false => `reasons` explain why KDPSafe will not offer the operation. */
+  eligible: boolean;
+  reasons: string[];
+  target: { widthPt: number; heightPt: number } | null;
+  current: { widthPt: number; heightPt: number } | null;
+  /** Space each anchor would add around the current page (points). */
+  previews: Record<ExpandAnchor, { addedPt: { left: number; bottom: number; right: number; top: number } }> | null;
+  pageCount: number;
+}
+
 /** What KDPSafe knows about the PDF's page boxes versus the user's
  * selection. Analysis only: nothing here has changed the file. */
 export interface PageGeometryAssessment {
@@ -367,6 +389,8 @@ export interface PageGeometryAssessment {
   pageSize: { widthIn: number; heightIn: number } | null;
   trimBox: 'explicit' | 'missing' | 'mixed';
   plan: NormalizationPlan | null;
+  /** Optional Expand-page offer; null when no page is smaller than the selected trim. */
+  expand: ExpandOffer | null;
   loadError?: string;
 }
 
@@ -386,4 +410,6 @@ export interface NormalizationResult {
   safety: { ok: boolean; checks: SafetyCheck[]; failure: string | null } | null;
   before: InspectionResult | null;
   after: InspectionResult | null;
+  /** Set only when an Expand-page operation was applied. */
+  expand?: { anchor: ExpandAnchor; pagesChanged: number; target: { widthPt: number; heightPt: number } };
 }

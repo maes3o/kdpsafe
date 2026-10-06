@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { useI18n } from '../i18n/context';
 import { useUnit } from '../units/context';
-import type { PageGeometryAssessment } from '../engine/types';
+import type { ExpandAnchor, PageGeometryAssessment } from '../engine/types';
+import { ExpandPagePanel } from './ExpandPagePanel';
 import type { NormalizationRecord } from '../workspace/useWorkspace';
 import { geometryReasonLabel, safetyCheckLabel } from '../i18n/labels';
 import { actualTrimSizePt } from '../workspace/issues';
@@ -28,12 +29,14 @@ export function PageGeometryCard({
   normalization,
   disabled,
   onApply,
+  onExpand,
   onUndo,
 }: {
   geometry: PageGeometryAssessment;
   normalization: NormalizationRecord | null;
   disabled: boolean;
   onApply: () => void;
+  onExpand: (anchor: ExpandAnchor) => void;
   onUndo: () => void;
 }) {
   const { t, formatNumber } = useI18n();
@@ -45,15 +48,22 @@ export function PageGeometryCard({
   // not a verdict. READY / VERIFIED are the only positive states and they
   // come from the engine's own result, shown elsewhere.
   if (normalization) {
+    const isExpand = normalization.kind === 'EXPAND_PAGE';
     return (
       <section data-testid="geometry-card" data-geometry-state="applied" className="rounded-2xl border border-border bg-bg p-4 shadow-card">
         <p className="flex items-center gap-2 text-sm font-semibold">
           <span aria-hidden="true" className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border-strong font-mono text-xs text-ink-muted">
             i
           </span>
-          {t('geoApplied', { n: normalization.pagesChanged })}
+          {isExpand && normalization.target
+            ? t('expandApplied', {
+                size: formatPair(normalization.target.widthPt / 72, normalization.target.heightPt / 72),
+                n: normalization.pagesChanged,
+                anchor: t(normalization.anchor === 'keep-origin' ? 'expandAnchorKeep' : 'expandAnchorCenter'),
+              })
+            : t('geoApplied', { n: normalization.pagesChanged })}
         </p>
-        <p className="mt-2 text-sm text-ink-muted">{t('geoAppliedNote')}</p>
+        <p className="mt-2 text-sm text-ink-muted">{t(isExpand ? 'expandAppliedNote' : 'geoAppliedNote')}</p>
         <details className="mt-2 text-sm">
           <summary className="cursor-pointer font-medium text-accent">{t('geoChecks')}</summary>
           <ul className="mt-1.5 space-y-1 text-xs">
@@ -180,6 +190,7 @@ export function PageGeometryCard({
         </ul>
       )}
       {summary}
+      {geometry.expand && <ExpandPagePanel offer={geometry.expand} disabled={disabled} onExpand={onExpand} />}
       {(tier === 3 || tier === 4) && <p className="mt-3 text-xs text-ink-muted">{t('geoManualHint')}</p>}
     </section>
   );
